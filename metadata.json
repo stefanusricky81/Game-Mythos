@@ -1,0 +1,6 @@
+{
+  "name": "Mythos",
+  "description": "Mythos: Age of Heroes - A vertical slice card battle prototype featuring Hercules",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

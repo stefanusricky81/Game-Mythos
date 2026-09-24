@@ -1,0 +1,60 @@
+{
+  "hero_id": "hero_hercules",
+  "name": "Hercules",
+  "title": "Champion of Olympus",
+  "faction": "Greek / Olympus",
+  "rarity": "LEGENDARY",
+  "character_version": "1.0.0",
+  "assets": {
+    "fullBody": {
+      "path": "character/hercules_fullbody.jpg",
+      "status": "PRODUCTION",
+      "purpose": "character profile, collection, future loading screens"
+    },
+    "battle": {
+      "path": "character/hercules_battle.jpg",
+      "status": "PRODUCTION",
+      "purpose": "Battlefield Hero representation"
+    },
+    "portrait": {
+      "path": "portrait/hercules_portrait.jpg",
+      "status": "PRODUCTION",
+      "purpose": "HeroStatusPanel"
+    },
+    "cardArt": {
+      "path": "card/hercules_card_art.jpg",
+      "status": "PRODUCTION",
+      "purpose": "Hercules Hero card"
+    },
+    "avatar": {
+      "path": "avatar/hercules_avatar.jpg",
+      "status": "PRODUCTION",
+      "purpose": "profile/avatar/collection"
+    },
+    "lastStand": {
+      "path": "skills/hercules_last_stand.jpg",
+      "status": "PRODUCTION",
+      "purpose": "Passive ability visual"
+    },
+    "twelveLabors": {
+      "path": "skills/hercules_twelve_labors.jpg",
+      "status": "PRODUCTION",
+      "purpose": "Ultimate ability visual"
+    },
+    "victory": {
+      "path": "poses/hercules_victory.jpg",
+      "status": "PRODUCTION",
+      "purpose": "Victory screen"
+    },
+    "defeat": {
+      "path": "poses/hercules_defeat.jpg",
+      "status": "PLACEHOLDER",
+      "purpose": "Defeat screen"
+    },
+    "designReference": {
+      "path": "reference/hercules_design_reference.jpg",
+      "status": "PLACEHOLDER",
+      "purpose": "Character visual reference"
+    }
+  }
+}
