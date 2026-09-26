@@ -19,21 +19,27 @@ data class HeroDefinition(
     val isPlayableInPrototype: Boolean = false,
     val releaseStatus: String = "AVAILABLE", // "AVAILABLE", "ARCHIVED", "COMING_SOON"
     val maxLevel: Int = 10,
-    val defaultDeckCardIds: List<String> = emptyList()
+    val defaultDeckCardIds: List<String> = emptyList(),
+    val passiveName: String = "LAST STAND",
+    val passiveDescription: String = "When HP drops below 30%, gain +25% Attack power.",
+    val ultimateName: String = "TWELVE LABORS",
+    val ultimateDescription: String = "At 100 Myth Power, unleash a colossal strike dealing 4,500 damage."
 ) {
     fun toBattleHero(level: Int = 1): Hero {
+        val scaled = HeroProgressionConfig.getScaledStats(this, level)
         if (id == HerculesIdentity.HERO_ID || id == "hercules") {
-            return Hero.createHercules()
+            return Hero.createHercules(level)
         }
         return Hero(
             id = id,
             name = name,
             title = title,
-            currentHp = baseHp,
-            maxHp = baseHp,
-            baseAttack = baseAttack,
-            baseDefense = baseDefense,
-            portraitResId = portraitResId
+            currentHp = scaled.hp,
+            maxHp = scaled.hp,
+            baseAttack = scaled.attack,
+            baseDefense = scaled.defense,
+            portraitResId = portraitResId,
+            level = level
         )
     }
 }
@@ -69,25 +75,62 @@ object HeroCatalog {
             "c_divine_challenge", "c_divine_challenge",
             "c_zeus_thunderstone",
             "c_celestial_arrow", "c_celestial_arrow"
-        )
+        ),
+        passiveName = "LAST STAND",
+        passiveDescription = "When HP drops below 30%, gain +25% Attack power and divine resilience.",
+        ultimateName = "TWELVE LABORS",
+        ultimateDescription = "At 100 Myth Power, unleash a colossal strike dealing 4,500 damage."
     )
+
+    val ACHILLES = HeroDefinition(
+        id = "hero_achilles",
+        name = "Achilles",
+        title = "Hero of the Trojan War",
+        faction = "Greek / Myrmidons",
+        rarity = CardRarity.LEGENDARY,
+        combatIdentity = "Invulnerability stance • Piercing lance • Critical strikes",
+        baseHp = 9500,
+        baseAttack = 3100,
+        baseDefense = 2200,
+        portraitResId = R.drawable.img_enemy_hero,
+        isPlayableInPrototype = false,
+        releaseStatus = "COMING_SOON",
+        passiveName = "RIVER STYX BLESSING",
+        passiveDescription = "Immune to critical strikes and absorbs 20% incoming damage.",
+        ultimateName = "SPEAR OF PELION",
+        ultimateDescription = "Pierces all enemy armor and deals 4,800 true damage."
+    )
+
+    val MERLIN = HeroDefinition(
+        id = "hero_merlin",
+        name = "Merlin",
+        title = "Archmage of Avalon",
+        faction = "Celtic / Arthurian",
+        rarity = CardRarity.MYTHIC,
+        combatIdentity = "Spell weaving • Time manipulation • Arcane shields",
+        baseHp = 8800,
+        baseAttack = 3300,
+        baseDefense = 2000,
+        portraitResId = HerculesIdentity.assets.portrait.resolveResId(),
+        isPlayableInPrototype = false,
+        releaseStatus = "COMING_SOON",
+        passiveName = "ARCANE RESONANCE",
+        passiveDescription = "Every spell card played generates +5 bonus Myth Power.",
+        ultimateName = "TIME DILATION",
+        ultimateDescription = "Freezes enemy turn meter and grants 3 bonus draw cards."
+    )
+
+    /**
+     * Featured Heroes for Hero Selection (Phase 7A):
+     * 1. Hercules (Unlocked, Canonical)
+     * 2. Achilles (Locked, Future Hero)
+     * 3. Merlin (Locked, Future Hero)
+     */
+    val SELECTION_HEROES: List<HeroDefinition> = listOf(HERCULES, ACHILLES, MERLIN)
 
     // Future Hero architecture (extensible roster as required by Section 3)
     val UPCOMING_HEROES: List<HeroDefinition> = listOf(
-        HeroDefinition(
-            id = "hero_achilles",
-            name = "Achilles",
-            title = "Hero of the Trojan War",
-            faction = "Greek / Myrmidons",
-            rarity = CardRarity.LEGENDARY,
-            combatIdentity = "Invulnerability stance • Piercing lance • Critical strikes",
-            baseHp = 9500,
-            baseAttack = 3100,
-            baseDefense = 2200,
-            portraitResId = R.drawable.img_enemy_hero,
-            isPlayableInPrototype = false,
-            releaseStatus = "COMING_SOON"
-        ),
+        ACHILLES,
         HeroDefinition(
             id = "hero_zeus",
             name = "Zeus",
@@ -116,20 +159,7 @@ object HeroCatalog {
             isPlayableInPrototype = false,
             releaseStatus = "COMING_SOON"
         ),
-        HeroDefinition(
-            id = "hero_merlin",
-            name = "Merlin",
-            title = "Archmage of Avalon",
-            faction = "Celtic / Arthurian",
-            rarity = CardRarity.MYTHIC,
-            combatIdentity = "Spell weaving • Time manipulation • Arcane shields",
-            baseHp = 8800,
-            baseAttack = 3300,
-            baseDefense = 2000,
-            portraitResId = HerculesIdentity.assets.portrait.resolveResId(),
-            isPlayableInPrototype = false,
-            releaseStatus = "COMING_SOON"
-        ),
+        MERLIN,
         HeroDefinition(
             id = "hero_thor",
             name = "Thor",

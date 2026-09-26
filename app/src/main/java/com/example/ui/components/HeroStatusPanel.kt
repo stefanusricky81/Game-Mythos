@@ -143,6 +143,22 @@ fun HeroStatusPanel(
                             style = MythosTypography.HeroName,
                             color = if (isPlayer) MythosTokens.PrimaryGold else Color(0xFFFF6B6B)
                         )
+                        if (isPlayer) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(MythosTokens.PrimaryGold.copy(alpha = 0.2f))
+                                    .border(0.5.dp, MythosTokens.PrimaryGold, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "LV ${hero.level}",
+                                    style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
+                                    color = MythosTokens.PrimaryGold
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "• ${hero.title.take(18)}",

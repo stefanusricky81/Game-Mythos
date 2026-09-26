@@ -2,12 +2,14 @@ package com.example.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -21,6 +23,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.MythosConfig
@@ -35,6 +39,8 @@ import com.example.viewmodel.BattleViewModel
 fun BattleScreen(
     viewModel: BattleViewModel,
     onNavigateBack: () -> Unit,
+    onOpenDeckBuilder: () -> Unit = {},
+    onGoToCollection: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -83,6 +89,116 @@ fun BattleScreen(
                     )
                 )
         )
+
+        // Invalid Active Deck Block (Requirements #4, #17)
+        if (uiState.isDeckInvalid) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(1.5.dp, MythosTokens.Damage, RoundedCornerShape(16.dp))
+                        .testTag("invalid_deck_dialog"),
+                    colors = CardDefaults.cardColors(containerColor = MythosTokens.Panel)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .background(MythosTokens.Damage.copy(alpha = 0.2f))
+                                .border(1.dp, MythosTokens.Damage, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MythosTokens.Damage,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "Your deck is invalid.",
+                            style = MythosTypography.GameTitle.copy(fontSize = 20.sp),
+                            color = MythosTokens.Damage,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Text(
+                            text = "Create and save a valid 20-card deck before entering battle.",
+                            style = MythosTypography.HeroTitle.copy(fontSize = 13.sp),
+                            color = MythosTokens.TextPrimary,
+                            textAlign = TextAlign.Center
+                        )
+
+                        val errorMsg = uiState.deckValidationResult?.primaryErrorMessage
+                            ?: "Deck must have exactly 20 cards and obey card ownership rules."
+                        Surface(
+                            color = MythosTokens.BackgroundSurface,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(0.8.dp, MythosTokens.PanelBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = errorMsg,
+                                style = MythosTypography.CardDescription.copy(fontSize = 11.sp),
+                                color = MythosTokens.TextSecondary,
+                                modifier = Modifier.padding(10.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Button(
+                            onClick = onOpenDeckBuilder,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("go_to_deck_builder_button"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MythosTokens.PrimaryGold,
+                                contentColor = Color(0xFF161202)
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("GO TO DECK BUILDER", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = onNavigateBack,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .testTag("return_home_button"),
+                            border = BorderStroke(1.dp, MythosTokens.PanelBorder),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Home, contentDescription = null, tint = MythosTokens.TextMuted, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("RETURN TO HOME", fontSize = 12.sp, color = MythosTokens.TextMuted)
+                        }
+                    }
+                }
+            }
+            return
+        }
 
         // 2. Main Game Area Column (Safe Area Handled)
         Column(
@@ -328,24 +444,27 @@ fun BattleScreen(
                             )
                         }
                     } else {
-                        uiState.playerHand.forEach { card ->
-                            val canAfford = card.cost <= uiState.playerEnergy
-                            val isPlayable = canAfford &&
-                                    uiState.currentTurn == BattleTurn.PLAYER_TURN &&
-                                    !uiState.isExecutingTurn
+                        uiState.playerHand.forEachIndexed { index, card ->
+                            val cardKey = if (card.instanceId.isNotEmpty()) card.instanceId else "${card.id}_$index"
+                            key(cardKey) {
+                                val canAfford = card.cost <= uiState.playerEnergy
+                                val isPlayable = canAfford &&
+                                        uiState.currentTurn == BattleTurn.PLAYER_TURN &&
+                                        !uiState.isExecutingTurn
 
-                            CardFrame(
-                                card = card,
-                                isPlayable = isPlayable,
-                                canAfford = canAfford,
-                                isShaking = uiState.shakingCardId == card.id,
-                                modifier = Modifier
-                                    .width(118.dp)
-                                    .fillMaxHeight(),
-                                onClick = {
-                                    viewModel.playCard(card)
-                                }
-                            )
+                                CardFrame(
+                                    card = card,
+                                    isPlayable = isPlayable,
+                                    canAfford = canAfford,
+                                    isShaking = uiState.shakingCardId == card.id,
+                                    modifier = Modifier
+                                        .width(118.dp)
+                                        .fillMaxHeight(),
+                                    onClick = {
+                                        viewModel.playCard(card)
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -391,8 +510,10 @@ fun BattleScreen(
                 isVictory = uiState.currentTurn == BattleTurn.VICTORY,
                 stats = uiState.stats,
                 rewards = uiState.rewards,
-                onBattleAgain = { viewModel.startNewBattle() },
-                onGoHome = onNavigateBack
+                campaignVictoryResult = uiState.campaignVictoryResult,
+                onBattleAgain = { viewModel.startNewBattle(encounterConfig = viewModel.activeEncounterConfig) },
+                onGoHome = onNavigateBack,
+                onGoToCollection = onGoToCollection
             )
         }
     }

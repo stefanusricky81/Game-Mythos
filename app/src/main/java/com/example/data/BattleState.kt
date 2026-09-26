@@ -97,5 +97,8 @@ data class BattleUiState(
     val isEnergyHighlighted: Boolean = false,
     val activeNotification: CombatNotification? = null,
     val mythPowerGainNotification: Int? = null,
-    val isDebugPanelOpen: Boolean = false
+    val isDebugPanelOpen: Boolean = false,
+    val isDeckInvalid: Boolean = false,
+    val deckValidationResult: DeckValidationResult? = null,
+    val campaignVictoryResult: StageVictoryResult? = null
 )

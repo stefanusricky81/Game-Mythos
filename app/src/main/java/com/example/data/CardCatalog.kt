@@ -52,9 +52,51 @@ data class CardDefinition(
 
     fun getUpgradeCost(currentLevel: Int): Pair<Int, Int>? {
         if (currentLevel >= maxLevel) return null
+        val configured = CardUpgradeConfig.getUpgradeCost(currentLevel)
+        if (configured != null) {
+            return Pair(configured.goldCost, configured.shardCost)
+        }
         val step = progression[currentLevel] ?: return null
         return Pair(step.goldCostToNext, step.shardCostToNext)
     }
+}
+
+/**
+ * Player inventory instance of a card tracking progression and unlock state.
+ * (Phase 6A Requirement #4)
+ */
+data class CardInstance(
+    val cardId: String,
+    val quantity: Int,
+    val level: Int,
+    val shards: Int,
+    val isUnlocked: Boolean,
+    val definition: CardDefinition
+)
+
+/**
+ * Centralized Card Upgrade Scaling Configuration (Phase 6A Requirement #8).
+ * Configurable progression costs across card levels:
+ * Level 1 -> 2: 5,000 Gold + 20 Shards
+ * Level 2 -> 3: 7,500 Gold + 30 Shards
+ * Level 3 -> 4: 10,000 Gold + 40 Shards
+ * Level 4 -> 5: 15,000 Gold + 50 Shards
+ */
+data class CardUpgradeCost(
+    val fromLevel: Int,
+    val goldCost: Int,
+    val shardCost: Int
+)
+
+object CardUpgradeConfig {
+    val PROGRESSION: Map<Int, CardUpgradeCost> = mapOf(
+        1 to CardUpgradeCost(fromLevel = 1, goldCost = 5_000, shardCost = 20),
+        2 to CardUpgradeCost(fromLevel = 2, goldCost = 7_500, shardCost = 30),
+        3 to CardUpgradeCost(fromLevel = 3, goldCost = 10_000, shardCost = 40),
+        4 to CardUpgradeCost(fromLevel = 4, goldCost = 15_000, shardCost = 50)
+    )
+
+    fun getUpgradeCost(currentLevel: Int): CardUpgradeCost? = PROGRESSION[currentLevel]
 }
 
 /**
@@ -429,6 +471,7 @@ object CardCatalog {
     private val cardMap: Map<String, CardDefinition> = ALL_CARDS.associateBy { it.id }
 
     fun findDefinition(cardId: String): CardDefinition? = cardMap[cardId]
+    fun getDefinition(cardId: String): CardDefinition? = findDefinition(cardId)
 
     fun getCard(cardId: String, level: Int = 1): Card {
         val def = findDefinition(cardId)

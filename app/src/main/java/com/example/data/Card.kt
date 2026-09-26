@@ -52,7 +52,8 @@ data class Card(
     val artworkResId: Int? = null,
     val faction: String = "Olympus",
     val level: Int = 1,
-    val maxLevel: Int = 5
+    val maxLevel: Int = 5,
+    val instanceId: String = ""
 )
 
 object DeckFactory {

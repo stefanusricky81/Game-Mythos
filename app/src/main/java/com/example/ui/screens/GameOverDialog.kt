@@ -16,8 +16,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -26,29 +26,43 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.example.R
 import com.example.data.BattleRewards
 import com.example.data.BattleStats
 import com.example.data.HerculesIdentity
+import com.example.data.StageVictoryResult
 import com.example.ui.theme.*
+import java.text.NumberFormat
+import java.util.Locale
 
 @Composable
 fun GameOverDialog(
     isVictory: Boolean,
     stats: BattleStats,
     rewards: BattleRewards,
+    campaignVictoryResult: StageVictoryResult? = null,
     onBattleAgain: () -> Unit,
     onGoHome: () -> Unit,
     onGoToCollection: (() -> Unit)? = null
 ) {
+    val numberFormat = NumberFormat.getNumberInstance(Locale.US)
     val title = if (isVictory) "VICTORY" else "DEFEAT"
-    val subtitle = if (isVictory) "Hercules has vanquished Ares in Mount Olympus!" else "Ares' unrelenting fury overwhelmed Hercules."
+    val stageSubtitle = when {
+        !isVictory -> "Ares' unrelenting fury overwhelmed Hercules in battle."
+        campaignVictoryResult != null -> {
+            if (campaignVictoryResult.isBoss) {
+                "WRATH OF OLYMPUS CONQUERED — THE GOD OF WAR BOWS"
+            } else {
+                "STAGE ${campaignVictoryResult.stageNumber}: ${campaignVictoryResult.stageName.uppercase()}"
+            }
+        }
+        else -> "Hercules has vanquished Ares in Mount Olympus!"
+    }
     val primaryColor = if (isVictory) MythosGoldPrimary else MythosRed
 
     Dialog(onDismissRequest = {}) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
+                .fillMaxWidth(0.96f)
                 .clip(RoundedCornerShape(20.dp))
                 .border(2.dp, primaryColor, RoundedCornerShape(20.dp)),
             color = Color(0xFF13101B)
@@ -60,7 +74,7 @@ fun GameOverDialog(
                     .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Hercules Character Pose (Victory vs Defeat - Section 4H/4I)
+                // Hercules Character Pose (Victory vs Defeat)
                 val heroPoseResId = if (isVictory) {
                     HerculesIdentity.assets.victory.resolveResId()
                 } else {
@@ -87,22 +101,132 @@ fun GameOverDialog(
                 Text(
                     text = title,
                     color = primaryColor,
-                    fontSize = 26.sp,
+                    fontSize = 28.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 2.sp,
                     textAlign = TextAlign.Center
                 )
 
                 Text(
-                    text = subtitle,
-                    color = Color(0xFFC7C1D4),
+                    text = stageSubtitle,
+                    color = if (campaignVictoryResult?.isBoss == true) MythosRed else Color(0xFFC7C1D4),
                     fontSize = 12.sp,
+                    fontWeight = if (campaignVictoryResult?.isBoss == true) FontWeight.Bold else FontWeight.Normal,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 14.dp)
+                    modifier = Modifier.padding(top = 4.dp, bottom = 10.dp)
                 )
 
-                // VICTORY REWARDS BOX (Section 12)
+                // CAMPAIGN STAR RATING BAR (Requirement #1 & #2)
+                if (isVictory && campaignVictoryResult != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF1C172B))
+                            .border(1.dp, MythosGoldDark, RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            for (starNum in 1..3) {
+                                val isEarned = starNum <= campaignVictoryResult.starsEarned
+                                Icon(
+                                    imageVector = if (isEarned) Icons.Default.Star else Icons.Default.StarBorder,
+                                    contentDescription = "Star $starNum",
+                                    tint = if (isEarned) MythosGoldPrimary else Color(0xFF4B435C),
+                                    modifier = Modifier.size(34.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        val ratingLabel = when (campaignVictoryResult.starsEarned) {
+                            3 -> "★★★ MASTER CLEAR"
+                            2 -> "★★ HEROIC CLEAR"
+                            else -> "★ TRIAL CLEAR"
+                        }
+                        Text(
+                            text = ratingLabel,
+                            color = MythosGoldPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp
+                        )
+
+                        if (campaignVictoryResult.starsEarned > campaignVictoryResult.previousStars && campaignVictoryResult.previousStars > 0) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(MythosTokens.Success.copy(alpha = 0.2f))
+                                    .border(0.5.dp, MythosTokens.Success, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "✦ NEW STAR RECORD! ✦",
+                                    color = MythosTokens.Success,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // PERFORMANCE CONDITIONS ACHIEVED (Requirement #2)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF0F0D16))
+                            .border(0.5.dp, Color(0xFF2C263B), RoundedCornerShape(10.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "STAR CONDITIONS",
+                            color = MythosGoldPrimary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.sp
+                        )
+
+                        // Condition 1: Victory
+                        StarConditionRow(
+                            starIndex = 1,
+                            title = "Stage Victory",
+                            detail = "Defeat the opposing champion",
+                            isAchieved = true
+                        )
+
+                        // Condition 2: Finish HP > 50%
+                        StarConditionRow(
+                            starIndex = 2,
+                            title = "Heroic Resilience",
+                            detail = "Finish battle with > 50% HP (${campaignVictoryResult.hpPercentage}% HP left)",
+                            isAchieved = campaignVictoryResult.hpConditionMet
+                        )
+
+                        // Condition 3: Turns <= configured limit
+                        StarConditionRow(
+                            starIndex = 3,
+                            title = "Swift Victory",
+                            detail = "Complete in ≤ ${campaignVictoryResult.maxTurnsAllowed} turns (${campaignVictoryResult.turnsCount} turns taken)",
+                            isAchieved = campaignVictoryResult.turnsConditionMet
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                // REWARDS BOX (Requirement #2, #3: First Clear vs Replay)
                 if (isVictory) {
+                    val isFirstClear = campaignVictoryResult?.isFirstClear ?: true
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -112,61 +236,184 @@ fun GameOverDialog(
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "BATTLE REWARDS EARNED",
-                            color = MythosGoldPrimary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 1.sp
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (isFirstClear) "FIRST CLEAR REWARDS" else "REPLAY REWARDS",
+                                color = MythosGoldPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp
+                            )
 
+                            if (isFirstClear) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(MythosTokens.PrimaryGold.copy(alpha = 0.2f))
+                                        .border(0.5.dp, MythosTokens.PrimaryGold, RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "FIRST CLEAR",
+                                        color = MythosTokens.PrimaryGold,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFF2A2438))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "REPLAY BOUNTY",
+                                        color = Color(0xFFAFA7BD),
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+
+                        // Gold & XP badges
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            RewardBadge(icon = Icons.Default.MonetizationOn, label = "+${rewards.gold} Gold", color = MythPowerGold)
-                            RewardBadge(icon = Icons.Default.Star, label = "+${rewards.xp} XP", color = Color(0xFF38BDF8))
+                            val goldAmt = campaignVictoryResult?.goldAwarded ?: rewards.gold
+                            val xpAmt = campaignVictoryResult?.xpAwarded ?: rewards.xp
+                            RewardBadge(icon = Icons.Default.MonetizationOn, label = "+${numberFormat.format(goldAmt)} Gold", color = MythPowerGold)
+                            RewardBadge(icon = Icons.Default.Star, label = "+${numberFormat.format(xpAmt)} XP", color = Color(0xFF38BDF8))
                         }
 
-                        // Card Reward
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFF110E18))
-                                .border(0.5.dp, RarityEpic, RoundedCornerShape(6.dp))
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Layers,
-                                contentDescription = null,
-                                tint = RarityEpic,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    text = "CARD REWARD UNLOCKED",
-                                    color = RarityEpic,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                                Text(
-                                    text = rewards.cardRewardName,
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                        // Hero XP & Hero Shards badges (Phase 7C Sections 11, 12)
+                        if (campaignVictoryResult != null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (campaignVictoryResult.heroXpAwarded > 0) {
+                                    RewardBadge(
+                                        icon = Icons.Default.Shield,
+                                        label = "+${numberFormat.format(campaignVictoryResult.heroXpAwarded)} Hero XP",
+                                        color = MythosTokens.DivineBlueLight
+                                    )
+                                }
+                                if (campaignVictoryResult.heroShardsAwarded > 0) {
+                                    val shardName = if (campaignVictoryResult.heroShardsHeroId == HerculesIdentity.HERO_ID) "Hercules" else "Hero"
+                                    RewardBadge(
+                                        icon = Icons.Default.Diamond,
+                                        label = "+${campaignVictoryResult.heroShardsAwarded} $shardName Shards",
+                                        color = MythosTokens.PrimaryGold
+                                    )
+                                }
                             }
+                        }
+
+                        // HERO UNLOCKED COMPACT NOTIFICATION (Phase 7C Section 16)
+                        if (campaignVictoryResult?.heroUnlocked != null) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.5.dp, MythosGoldPrimary, RoundedCornerShape(8.dp))
+                                    .testTag("hero_unlocked_notification"),
+                                color = Color(0xFF231C30)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = MythosGoldPrimary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Column {
+                                        Text(
+                                            text = "HERO UNLOCKED",
+                                            color = MythosGoldPrimary,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 1.sp
+                                        )
+                                        Text(
+                                            text = campaignVictoryResult.heroUnlocked.uppercase(),
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Card Reward (Only for First Clear or when card is awarded)
+                        if (isFirstClear && !campaignVictoryResult?.cardNameAwarded.isNullOrBlank()) {
+                            val cardName = campaignVictoryResult?.cardNameAwarded ?: rewards.cardRewardName
+                            val cardRarity = campaignVictoryResult?.cardRarityAwarded ?: rewards.cardRewardRarity
+                            val rarityColor = MythosTokens.getRarityColor(cardRarity)
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF110E18))
+                                    .border(0.5.dp, rarityColor, RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Layers,
+                                    contentDescription = null,
+                                    tint = rarityColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = if (campaignVictoryResult?.wasDuplicateCard == true)
+                                            "DUPLICATE CONVERTED TO +${campaignVictoryResult.shardsAwardedForDuplicate} SHARDS"
+                                        else
+                                            "CARD REWARD UNLOCKED",
+                                        color = rarityColor,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    Text(
+                                        text = cardName,
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        } else if (!isFirstClear && campaignVictoryResult != null) {
+                            Text(
+                                text = "First-clear card reward already claimed. Replay grants standard bounty.",
+                                color = Color(0xFFA59EB3),
+                                fontSize = 10.sp,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                            )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
                 }
 
-                // Battle Report
+                // Battle Statistics Report (Requirement #2)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -186,15 +433,21 @@ fun GameOverDialog(
 
                         StatRow("Turns Taken", "${stats.turnsCount}")
                         StatRow("Cards Played", "${stats.cardsPlayedCount}")
-                        StatRow("Total Damage Dealt", "${stats.totalDamageDealt}")
-                        StatRow("Total Damage Absorbed", "${stats.totalDamageTaken}")
+                        StatRow("Total Damage Dealt", numberFormat.format(stats.totalDamageDealt))
+                        StatRow("Total Damage Absorbed", numberFormat.format(stats.totalDamageTaken))
+                        if (campaignVictoryResult != null) {
+                            StatRow(
+                                "Remaining HP",
+                                "${numberFormat.format(campaignVictoryResult.playerRemainingHp)} / ${numberFormat.format(campaignVictoryResult.playerMaxHp)} (${campaignVictoryResult.hpPercentage}%)"
+                            )
+                        }
                         StatRow("Twelve Labors Unleashed", "${stats.ultimateUses}")
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Action Buttons: BATTLE AGAIN / RETRY and HOME
+                // Action Buttons: BATTLE AGAIN / RETRY, COLLECTION, HOME
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -214,7 +467,11 @@ fun GameOverDialog(
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (isVictory) "BATTLE AGAIN" else "RETRY",
+                            text = if (isVictory) {
+                                if (campaignVictoryResult != null) "REPLAY STAGE" else "BATTLE AGAIN"
+                            } else {
+                                "RETRY BATTLE"
+                            },
                             fontSize = 13.sp,
                             fontWeight = FontWeight.ExtraBold
                         )
@@ -259,7 +516,7 @@ fun GameOverDialog(
                         Icon(imageVector = Icons.Default.Home, contentDescription = null)
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "HOME",
+                            text = if (campaignVictoryResult != null) "RETURN TO CAMPAIGN" else "HOME",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -271,7 +528,61 @@ fun GameOverDialog(
 }
 
 @Composable
-private fun RewardBadge(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, color: Color) {
+private fun StarConditionRow(
+    starIndex: Int,
+    title: String,
+    detail: String,
+    isAchieved: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            Icon(
+                imageVector = if (isAchieved) Icons.Default.Star else Icons.Default.StarBorder,
+                contentDescription = null,
+                tint = if (isAchieved) MythosGoldPrimary else Color(0xFF5A526E),
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Column {
+                Text(
+                    text = title,
+                    color = if (isAchieved) Color.White else Color(0xFF8E869E),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = detail,
+                    color = Color(0xFF756D84),
+                    fontSize = 9.sp
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (isAchieved) MythosTokens.Success.copy(alpha = 0.2f) else Color(0x33444444))
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text(
+                text = if (isAchieved) "ACHIEVED" else "MISSED",
+                color = if (isAchieved) MythosTokens.Success else Color(0xFF888888),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun RewardBadge(icon: ImageVector, label: String, color: Color) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))

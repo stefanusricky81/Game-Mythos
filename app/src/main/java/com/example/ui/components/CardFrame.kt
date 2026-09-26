@@ -168,7 +168,7 @@ fun CardFrame(
                             .padding(horizontal = 4.dp, vertical = 0.5.dp)
                     ) {
                         Text(
-                            text = card.rarity.name.take(3),
+                            text = if (card.level > 1) "${card.rarity.name.take(3)} • L${card.level}" else card.rarity.name.take(3),
                             style = MythosTypography.RarityLabel,
                             color = rarityColor
                         )

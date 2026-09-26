@@ -40,6 +40,7 @@ object MythosTokens {
 
     // 5. Combat & Status Feedback
     val Success = Color(0xFF10B981)
+    val HealthGreen = Color(0xFF10B981)
     val Warning = Color(0xFFF59E0B)
     val Damage = Color(0xFFEF4444)
     val Critical = Color(0xFFFF334B)
@@ -52,6 +53,7 @@ object MythosTokens {
     // 6. Resources
     val Energy = Color(0xFF22D3EE)
     val EnergyDark = Color(0xFF0E7490)
+    val EnergyGold = Color(0xFFFFD166)
     val EnergySlotSpent = Color(0xFF1E3A4B)
     val EnergySlotLocked = Color(0xFF191722)
     val MythPower = Color(0xFFFBBF24)
@@ -59,6 +61,13 @@ object MythosTokens {
     val MythPowerDark = Color(0xFF4A3A17)
 
     // 7. Six-Tier Rarity System
+    val Common = Color(0xFF94A3B8)
+    val Uncommon = Color(0xFF10B981)
+    val Rare = Color(0xFF38BDF8)
+    val Epic = Color(0xFFA855F7)
+    val Legendary = Color(0xFFFBBF24)
+    val Mythic = Color(0xFFF43F5E)
+
     fun getRarityColor(rarity: CardRarity): Color = when (rarity) {
         CardRarity.COMMON -> Color(0xFF94A3B8)       // Ancient Stone Slate
         CardRarity.UNCOMMON -> Color(0xFF10B981)     // Spartan Bronze Jade

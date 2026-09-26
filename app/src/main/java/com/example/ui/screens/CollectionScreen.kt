@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,7 @@ import com.example.monetization.PlayerEconomyRepository
 import com.example.monetization.PlayerEconomyState
 import com.example.ui.components.CardArtwork
 import com.example.ui.components.CardFrame
+import com.example.ui.components.HeroDetailUpgradeDialog
 import com.example.ui.components.MythosButton
 import com.example.ui.components.MythosButtonStyle
 import com.example.ui.theme.MythosTokens
@@ -56,7 +58,7 @@ enum class CollectionTab(val label: String) {
 @Composable
 fun CollectionScreen(
     onNavigateBack: () -> Unit,
-    onOpenDeckBuilder: () -> Unit,
+    onOpenDeckBuilder: (String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
@@ -118,14 +120,14 @@ fun CollectionScreen(
                             Spacer(modifier = Modifier.width(4.dp))
                             Column {
                                 Text(
-                                    text = "MY COLLECTION",
+                                    text = "COLLECTION",
                                     style = MythosTypography.GameTitle.copy(fontSize = 18.sp),
                                     color = MythosTokens.PrimaryGold
                                 )
                                 Text(
-                                    text = "Heroes, Cards & Master Progression",
+                                    text = "${economyState.ownedCardIds.size} / ${CardCatalog.ALL_CARDS.size} Cards Owned",
                                     style = MythosTypography.HeroTitle.copy(fontSize = 10.sp),
-                                    color = MythosTokens.TextMuted
+                                    color = MythosTokens.SecondaryGold
                                 )
                             }
                         }
@@ -155,7 +157,7 @@ fun CollectionScreen(
 
                             // Deck Builder Button
                             Button(
-                                onClick = onOpenDeckBuilder,
+                                onClick = { onOpenDeckBuilder(null) },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MythosTokens.PanelElevated,
                                     contentColor = MythosTokens.PrimaryGold
@@ -263,8 +265,9 @@ fun CollectionScreen(
                     }
                 },
                 onOpenDeckBuilder = {
+                    val targetCardId = cardDef.id
                     inspectingCardDef = null
-                    onOpenDeckBuilder()
+                    onOpenDeckBuilder(targetCardId)
                 },
                 onDismiss = {
                     inspectingCardDef = null
@@ -274,12 +277,10 @@ fun CollectionScreen(
             )
         }
 
-        // 4. HERO DETAIL MODAL (Requirement #17)
+        // 4. HERO DETAIL & UPGRADE MODAL (Phase 7C Section 10 & 17)
         inspectingHeroDef?.let { heroDef ->
-            HeroDetailDialog(
+            HeroDetailUpgradeDialog(
                 heroDef = heroDef,
-                isSelected = economyState.selectedHeroId == heroDef.id,
-                isOwned = economyState.ownedHeroIds.contains(heroDef.id),
                 economyState = economyState,
                 onSelectHero = {
                     PlayerEconomyRepository.instance.selectHero(heroDef.id)
@@ -500,13 +501,23 @@ private fun HeroesCollectionContent(
         )
 
         HeroCatalog.UPCOMING_HEROES.forEach { heroDef ->
+            val heroProgress = economyState.getHeroProgress(heroDef.id)
+            val isUnlocked = heroProgress.isUnlocked
+            val isSelected = economyState.selectedHeroId == heroDef.id
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .border(0.5.dp, MythosTokens.PanelBorder, RoundedCornerShape(12.dp))
+                    .border(
+                        if (isSelected) 1.5.dp else 0.5.dp,
+                        if (isSelected) MythosTokens.PrimaryGold else if (isUnlocked) MythosTokens.Success.copy(alpha = 0.6f) else MythosTokens.PanelBorder,
+                        RoundedCornerShape(12.dp)
+                    )
                     .clickable { onInspectHero(heroDef) },
-                colors = CardDefaults.cardColors(containerColor = MythosTokens.Panel.copy(alpha = 0.6f))
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isUnlocked) MythosTokens.Panel else MythosTokens.Panel.copy(alpha = 0.6f)
+                )
             ) {
                 Row(
                     modifier = Modifier
@@ -518,27 +529,34 @@ private fun HeroesCollectionContent(
                         modifier = Modifier
                             .size(54.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .border(1.dp, MythosTokens.getRarityColor(heroDef.rarity).copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                            .border(
+                                1.dp,
+                                if (isUnlocked) MythosTokens.getRarityColor(heroDef.rarity)
+                                else MythosTokens.getRarityColor(heroDef.rarity).copy(alpha = 0.5f),
+                                RoundedCornerShape(10.dp)
+                            )
                     ) {
                         Image(
                             painter = painterResource(id = heroDef.portraitResId),
                             contentDescription = heroDef.name,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
-                            alpha = 0.5f
+                            alpha = if (isUnlocked) 1.0f else 0.45f
                         )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.4f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Locked",
-                                tint = MythosTokens.TextMuted,
-                                modifier = Modifier.size(20.dp)
-                            )
+                        if (!isUnlocked) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.5f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "Locked",
+                                    tint = MythosTokens.TextMuted,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
 
@@ -549,7 +567,7 @@ private fun HeroesCollectionContent(
                             Text(
                                 text = heroDef.name,
                                 style = MythosTypography.HeroName.copy(fontSize = 15.sp),
-                                color = MythosTokens.TextPrimary
+                                color = if (isUnlocked) MythosTokens.TextPrimary else MythosTokens.TextMuted
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Box(
@@ -568,9 +586,10 @@ private fun HeroesCollectionContent(
                         }
 
                         Text(
-                            text = heroDef.title,
+                            text = if (isUnlocked) "Level ${heroProgress.level} • ${heroProgress.currentShards} Shards"
+                            else heroDef.title,
                             style = MythosTypography.HeroTitle.copy(fontSize = 11.sp),
-                            color = MythosTokens.TextMuted
+                            color = if (isUnlocked) MythosTokens.SecondaryGold else MythosTokens.TextMuted
                         )
 
                         Text(
@@ -582,17 +601,42 @@ private fun HeroesCollectionContent(
                         )
                     }
 
+                    // Status Badge (Phase 7C Section 17)
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(MythosTokens.PanelElevated)
-                            .border(0.5.dp, MythosTokens.PanelBorder, RoundedCornerShape(6.dp))
+                            .background(
+                                when {
+                                    isSelected -> MythosTokens.PrimaryGold.copy(alpha = 0.2f)
+                                    isUnlocked -> MythosTokens.Success.copy(alpha = 0.2f)
+                                    else -> MythosTokens.PanelElevated
+                                }
+                            )
+                            .border(
+                                0.5.dp,
+                                when {
+                                    isSelected -> MythosTokens.PrimaryGold
+                                    isUnlocked -> MythosTokens.Success
+                                    else -> MythosTokens.PanelBorder
+                                },
+                                RoundedCornerShape(6.dp)
+                            )
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = "ARCHIVED",
+                            text = when {
+                                isSelected -> "ACTIVE"
+                                isUnlocked -> "LV ${heroProgress.level}"
+                                heroDef.id == "hero_achilles" -> "STAGE 2"
+                                heroDef.id == "hero_merlin" -> "STAGE 5"
+                                else -> "ARCHIVED"
+                            },
                             style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
-                            color = MythosTokens.TextMuted
+                            color = when {
+                                isSelected -> MythosTokens.PrimaryGold
+                                isUnlocked -> MythosTokens.Success
+                                else -> MythosTokens.TextMuted
+                            }
                         )
                     }
                 }
@@ -649,7 +693,7 @@ private fun CardsCollectionContent(
                     FilterChip(
                         selected = selectedRarity == null,
                         onClick = { onSelectRarity(null) },
-                        label = { Text("All Rarity", fontSize = 10.5.sp) },
+                        label = { Text("ALL", fontSize = 10.5.sp, fontWeight = FontWeight.Bold) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = MythosTokens.PrimaryGold,
                             selectedLabelColor = Color(0xFF13101B),
@@ -671,7 +715,7 @@ private fun CardsCollectionContent(
                         FilterChip(
                             selected = isSel,
                             onClick = { onSelectRarity(if (isSel) null else rarity) },
-                            label = { Text(rarity.label, fontSize = 10.5.sp) },
+                            label = { Text(rarity.name, fontSize = 10.5.sp, fontWeight = FontWeight.Bold) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = color.copy(alpha = 0.25f),
                                 selectedLabelColor = color,
@@ -835,11 +879,41 @@ private fun CardsCollectionContent(
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
-                                    text = if (isOwned) "×$ownedCount" else "UNOWNED",
+                                    text = if (isOwned) "×$ownedCount" else "LOCKED",
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = if (isOwned) Color(0xFF0D1B2A) else Color(0xFFB5AFBF)
+                                    color = if (isOwned) Color(0xFF0D1B2A) else Color(0xFFE2D6A5)
                                 )
+                            }
+                        }
+
+                        // Locked Card Visual Overlay (Requirement #5)
+                        if (!isOwned) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0x800B0914)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = "Locked Card",
+                                        tint = MythosTokens.PrimaryGold,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "LOCKED",
+                                        style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
+                                        color = MythosTokens.PrimaryGold,
+                                        letterSpacing = 1.sp
+                                    )
+                                }
                             }
                         }
 
@@ -983,12 +1057,26 @@ private fun CardDetailUpgradeDialog(
                     textAlign = TextAlign.Center
                 )
 
-                Text(
-                    text = "LEVEL $currentLevel / ${cardDef.maxLevel}",
-                    style = MythosTypography.HeroTitle.copy(fontSize = 12.sp),
-                    color = MythosTokens.DivineBlueLight,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "LEVEL $currentLevel / ${cardDef.maxLevel}",
+                        style = MythosTypography.HeroTitle.copy(fontSize = 12.sp),
+                        color = MythosTokens.DivineBlueLight
+                    )
+                    Text(
+                        text = "•",
+                        color = MythosTokens.TextMuted,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = "⚡ ${currentCard.cost} Energy",
+                        style = MythosTypography.HeroTitle.copy(fontSize = 12.sp),
+                        color = MythosTokens.DivineBlue
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -1046,7 +1134,7 @@ private fun CardDetailUpgradeDialog(
                     )
 
                     Text(
-                        text = "$shards / $shardCost SHARDS",
+                        text = "Shards: $shards / $shardCost",
                         style = MythosTypography.HeroName.copy(fontSize = 12.sp),
                         color = if (hasEnoughShards) MythosTokens.PrimaryGold else MythosTokens.TextMuted
                     )
@@ -1095,11 +1183,13 @@ private fun CardDetailUpgradeDialog(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "UPGRADE COST",
-                            style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
-                            color = MythosTokens.SecondaryGold
+                            text = "Upgrade:\n${numberFormat.format(goldCost)} Gold + $shardCost Shards",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            color = if (canUpgrade) MythosTokens.PrimaryGold else MythosTokens.TextPrimary
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                             verticalAlignment = Alignment.CenterVertically

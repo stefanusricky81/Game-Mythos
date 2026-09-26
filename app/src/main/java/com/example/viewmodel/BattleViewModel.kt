@@ -24,6 +24,9 @@ class BattleViewModel : ViewModel() {
     private var soundManager: SoundManager? = null
     private var hasAwardedVictoryRewards: Boolean = false
 
+    var activeEncounterConfig: BattleEncounterConfig? = null
+        private set
+
     init {
         startNewBattle()
     }
@@ -33,29 +36,60 @@ class BattleViewModel : ViewModel() {
     }
 
     /**
-     * Completely resets and starts a fresh new battle using Active Deck (Requirements #12, #13).
+     * Completely resets and starts a fresh new battle using Active Deck (Phase 6C Requirements).
+     * Validates active deck before starting; blocks combat and marks invalid state if criteria are unmet.
      */
-    fun startNewBattle(customDeck: ActiveDeck? = null) {
+    fun startNewBattle(
+        customDeck: ActiveDeck? = null,
+        encounterConfig: BattleEncounterConfig? = null
+    ): Boolean {
         hasAwardedVictoryRewards = false
+        activeEncounterConfig = encounterConfig
         val economy = PlayerEconomyRepository.instance.economyState.value
-        val activeDeck = customDeck ?: economy.activeDeck
+        val sourceDeck = customDeck ?: economy.activeDeck
 
-        // Resolve Hero from HeroCatalog (Requirement #12)
+        // Strictly isolate BattleDeck as an independent defensive copy (ROOT REQUIREMENT: Persistent ActiveDeck is READ ONLY)
+        val activeDeck = sourceDeck.createDefensiveCopy()
+
+        // Validate ActiveDeck using authoritative DeckValidator
+        val validation = DeckValidator.validate(activeDeck, economy.ownedCardCounts)
+        if (!validation.isValid) {
+            _uiState.update {
+                it.copy(
+                    isDeckInvalid = true,
+                    deckValidationResult = validation,
+                    playerHand = emptyList(),
+                    playerDrawPile = emptyList()
+                )
+            }
+            return false
+        }
+
+        // Resolve Hero from HeroCatalog with current level progression (Phase 7C Section 14)
         val heroDef = HeroCatalog.findHero(activeDeck.heroId) ?: HeroCatalog.HERCULES
-        val playerHero = heroDef.toBattleHero()
+        val heroLevel = economy.heroProgression[activeDeck.heroId] ?: 1
+        val playerHero = heroDef.toBattleHero(level = heroLevel)
 
-        // Resolve 20 Cards with player's upgraded cardLevels from CardCatalog (Requirements #12, #13)
-        val fullDeck = activeDeck.cardIds.map { cardId ->
+        // Resolve Enemy Hero and Rewards from encounter configuration (Campaign integration)
+        val enemyHero = encounterConfig?.enemyHero ?: Hero.createAres()
+        val rewards = encounterConfig?.rewards ?: BattleRewards()
+        val encounterTitle = encounterConfig?.encounterName ?: "Mount Olympus"
+
+        // Resolve 20 Cards with player's upgraded cardLevels from CardCatalog (authoritative source)
+        // Each card gets a unique instanceId to differentiate duplicate copies in hand & deck
+        val fullDeck = activeDeck.cardIds.mapIndexed { index, cardId ->
             val level = economy.cardLevels[cardId] ?: 1
-            CardCatalog.getCard(cardId, level)
+            CardCatalog.getCard(cardId, level).copy(
+                instanceId = "${cardId}_${index}_${UUID.randomUUID()}"
+            )
         }.shuffled()
 
-        val initialHand = fullDeck.take(4)
-        val drawPile = fullDeck.drop(4)
+        val initialHand = fullDeck.take(4).map { it.copy() }
+        val drawPile = fullDeck.drop(4).map { it.copy() }
 
         _uiState.value = BattleUiState(
             playerHero = playerHero,
-            enemyHero = Hero.createAres(),
+            enemyHero = enemyHero,
             playerEnergy = 5,
             maxPlayerEnergy = 5,
             playerMythPower = 30,
@@ -68,11 +102,11 @@ class BattleViewModel : ViewModel() {
             playerDiscardPile = emptyList(),
             enemyHand = DeckFactory.createEnemyDeck(),
             combatLogs = listOf(
-                CombatLog(UUID.randomUUID().toString(), "Battle commences! ${playerHero.name} faces Ares in Mount Olympus.", LogType.INFO)
+                CombatLog(UUID.randomUUID().toString(), "Battle commences! ${playerHero.name} faces ${enemyHero.name} in $encounterTitle.", LogType.INFO)
             ),
             floatingTexts = emptyList(),
             stats = BattleStats(),
-            rewards = BattleRewards(),
+            rewards = rewards,
             isExecutingTurn = false,
             isPlayerAttacking = false,
             isEnemyAttacking = false,
@@ -86,14 +120,43 @@ class BattleViewModel : ViewModel() {
             isEnergyHighlighted = false,
             activeNotification = null,
             mythPowerGainNotification = null,
-            isDebugPanelOpen = false
+            isDebugPanelOpen = false,
+            isDeckInvalid = false,
+            deckValidationResult = null,
+            campaignVictoryResult = null
         )
+        return true
     }
 
     private fun triggerVictory() {
         if (!hasAwardedVictoryRewards) {
             hasAwardedVictoryRewards = true
-            PlayerEconomyRepository.instance.claimBattleVictoryRewards(_uiState.value.rewards)
+            val config = activeEncounterConfig
+            val stage = config?.stageId?.let { CampaignCatalog.findStage(it) }
+
+            if (stage != null) {
+                val state = _uiState.value
+                val victoryResult = PlayerEconomyRepository.instance.recordCampaignVictory(
+                    stage = stage,
+                    playerRemainingHp = state.playerHero.currentHp,
+                    playerMaxHp = state.playerHero.maxHp,
+                    turnsCount = state.stats.turnsCount
+                )
+                _uiState.update {
+                    it.copy(
+                        campaignVictoryResult = victoryResult,
+                        rewards = BattleRewards(
+                            gold = victoryResult.goldAwarded,
+                            xp = victoryResult.xpAwarded,
+                            cardRewardName = victoryResult.cardNameAwarded ?: "",
+                            cardRewardRarity = victoryResult.cardRarityAwarded ?: CardRarity.COMMON
+                        )
+                    )
+                }
+            } else {
+                val rewardCard = config?.rewardCardId ?: "c_divine_aegis"
+                PlayerEconomyRepository.instance.claimBattleVictoryRewards(_uiState.value.rewards, rewardCard)
+            }
         }
         soundManager?.playVictorySound()
     }
@@ -119,7 +182,7 @@ class BattleViewModel : ViewModel() {
      */
     fun playCard(card: Card) {
         val state = _uiState.value
-        if (state.currentTurn != BattleTurn.PLAYER_TURN || state.isExecutingTurn) {
+        if (state.currentTurn != BattleTurn.PLAYER_TURN || state.isExecutingTurn || state.isDeckInvalid) {
             return
         }
 
@@ -146,14 +209,17 @@ class BattleViewModel : ViewModel() {
             return
         }
 
-        // Ensure card exists in hand
-        if (!state.playerHand.any { it.id == card.id }) {
+        // Ensure card exists in hand (respecting individual card instances)
+        val handIndex = state.playerHand.indexOfFirst {
+            if (card.instanceId.isNotEmpty()) it.instanceId == card.instanceId else it === card || it == card
+        }
+        if (handIndex == -1) {
             return
         }
 
         viewModelScope.launch {
-            // Step 1: Immediate deduction and hand removal (cannot be played twice)
-            val newHand = state.playerHand.filter { it.id != card.id }
+            // Step 1: Immediate deduction and remove ONLY the played card instance from hand (Requirement #9)
+            val newHand = state.playerHand.toMutableList().apply { removeAt(handIndex) }
             val deductedEnergy = state.playerEnergy - card.cost
             val gainedMythPower = (state.playerMythPower + 12 + card.effect.mythPowerGain).coerceAtMost(state.maxMythPower)
             val mythGainDelta = 12 + card.effect.mythPowerGain

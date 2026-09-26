@@ -8,11 +8,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
@@ -28,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.*
+import com.example.monetization.PlayerEconomyRepository
 import com.example.ui.components.CardDetailDialog
 import com.example.ui.components.CardFrame
 import com.example.ui.theme.MythosTokens
@@ -37,14 +40,22 @@ import com.example.ui.theme.MythosTypography
 @Composable
 fun DeckInspectScreen(
     onNavigateBack: () -> Unit,
+    onOpenDeckBuilder: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val fullDeck = remember { DeckFactory.createPrototypeDeck() }
+    val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
+    val activeDeck = economyState.activeDeck
+    val fullDeck = remember(activeDeck.cardIds, economyState.cardLevels) {
+        activeDeck.cardIds.map { cardId ->
+            val level = economyState.cardLevels[cardId] ?: 1
+            CardCatalog.getCard(cardId, level)
+        }
+    }
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedTypeFilter by remember { mutableStateOf<CardType?>(null) }
     var selectedCardForDetail by remember { mutableStateOf<Card?>(null) }
 
-    val filteredCards = remember(selectedTypeFilter) {
+    val filteredCards = remember(selectedTypeFilter, fullDeck) {
         if (selectedTypeFilter == null) fullDeck else fullDeck.filter { it.type == selectedTypeFilter }
     }
 
@@ -59,7 +70,7 @@ fun DeckInspectScreen(
                             color = MythosTokens.PrimaryGold
                         )
                         Text(
-                            text = if (selectedTab == 0) "${fullDeck.size} Cards • 6-Rarity Design System" else "Hercules Canonical Character Pipeline",
+                            text = if (selectedTab == 0) "${fullDeck.size}/20 Active Deck Cards • ${activeDeck.name}" else "Hercules Canonical Character Pipeline",
                             style = MythosTypography.HeroTitle.copy(fontSize = 11.sp),
                             color = MythosTokens.TextMuted
                         )
@@ -72,6 +83,24 @@ fun DeckInspectScreen(
                             contentDescription = "Back",
                             tint = MythosTokens.PrimaryGold
                         )
+                    }
+                },
+                actions = {
+                    Button(
+                        onClick = onOpenDeckBuilder,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MythosTokens.PrimaryGold,
+                            contentColor = Color(0xFF161202)
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .height(32.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("EDIT DECK", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -191,7 +220,7 @@ fun DeckInspectScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(filteredCards, key = { it.id }) { card ->
+                    itemsIndexed(filteredCards, key = { index, card -> "${card.id}_$index" }) { _, card ->
                         CardFrame(
                             card = card,
                             isPlayable = false,

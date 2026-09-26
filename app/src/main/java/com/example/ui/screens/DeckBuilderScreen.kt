@@ -8,11 +8,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -37,36 +37,55 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.*
 import com.example.monetization.PlayerEconomyRepository
-import com.example.monetization.PlayerEconomyState
 import com.example.ui.components.CardFrame
-import com.example.ui.components.MythosButton
-import com.example.ui.components.MythosButtonStyle
 import com.example.ui.theme.MythosTokens
 import com.example.ui.theme.MythosTypography
+import kotlinx.coroutines.delay
 
+/**
+ * Authoritative Deck Builder Screen (Requirements #6, #7, #8, #9, #10, #11, #16, #18).
+ * Enforces exact 20-card rule, max 2 duplicates per card, ownership bounds, and local persistence.
+ */
 @Composable
 fun DeckBuilderScreen(
     onNavigateBack: () -> Unit,
-    onStartBattleWithDeck: () -> Unit,
+    onStartBattleWithDeck: () -> Unit = {},
+    initialFocusCardId: String? = null,
     modifier: Modifier = Modifier
 ) {
     val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
 
-    // Local editing state for active deck
+    // Local working draft of active deck card IDs
     var workingCardIds by remember(economyState.activeDeck) {
-        mutableStateOf(economyState.activeDeck.cardIds.toMutableList())
+        mutableStateOf(economyState.activeDeck.cardIds.toList().toMutableList())
     }
-    var selectedHeroId by remember(economyState.selectedHeroId) {
+
+    // Always re-sync workingCardIds from persistent activeDeck on entry/deck change
+    LaunchedEffect(economyState.activeDeck) {
+        workingCardIds = economyState.activeDeck.cardIds.toList().toMutableList()
+    }
+    val selectedHeroId by remember(economyState.selectedHeroId) {
         mutableStateOf(economyState.selectedHeroId)
     }
 
     var selectedFilterType by remember { mutableStateOf<CardType?>(null) }
-    var saveStatusFeedback by remember { mutableStateOf<String?>(null) }
+    var userFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    var highlightedCardId by remember { mutableStateOf(initialFocusCardId) }
 
-    // Validate in real time (Requirement #10)
+    // Grid state for scrolling to focused card
+    val gridState = rememberLazyGridState()
+
+    // Working deck snapshot and centralized validation (Requirement #5)
     val workingDeck = remember(workingCardIds, selectedHeroId) {
-        ActiveDeck(heroId = selectedHeroId, cardIds = workingCardIds.toList())
+        ActiveDeck(
+            deckId = economyState.activeDeck.deckId,
+            name = economyState.activeDeck.name,
+            heroId = selectedHeroId,
+            cardIds = workingCardIds.toList(),
+            updatedAt = System.currentTimeMillis()
+        )
     }
+
     val validationResult = remember(workingDeck, economyState.ownedCardCounts) {
         DeckValidator.validate(workingDeck, economyState.ownedCardCounts)
     }
@@ -75,9 +94,34 @@ fun DeckBuilderScreen(
         HeroCatalog.findHero(selectedHeroId) ?: HeroCatalog.HERCULES
     }
 
-    // Frequencies in current working deck
+    // Frequencies in working deck
     val deckFrequencies = remember(workingCardIds) {
         workingCardIds.groupingBy { it }.eachCount()
+    }
+
+    // Candidate cards from authoritative CardCatalog
+    val candidateCards = remember(selectedFilterType, economyState.ownedCardIds) {
+        CardCatalog.ALL_CARDS.filter { def ->
+            selectedFilterType == null || def.type == selectedFilterType
+        }
+    }
+
+    // Auto-scroll to focused card if specified (Requirement #13)
+    LaunchedEffect(initialFocusCardId) {
+        if (initialFocusCardId != null) {
+            val index = candidateCards.indexOfFirst { it.id == initialFocusCardId }
+            if (index >= 0) {
+                gridState.animateScrollToItem(index)
+            }
+        }
+    }
+
+    // Clear feedback message after delay
+    LaunchedEffect(userFeedbackMessage) {
+        if (userFeedbackMessage != null) {
+            delay(3500)
+            userFeedbackMessage = null
+        }
     }
 
     Box(
@@ -85,17 +129,19 @@ fun DeckBuilderScreen(
             .fillMaxSize()
             .background(MythosTokens.Background)
     ) {
-        // Subtle background
+        // Subtle battlefield background
         Image(
             painter = painterResource(id = R.drawable.img_battlefield_bg),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
-            alpha = 0.15f
+            alpha = 0.12f
         )
 
         Column(modifier = Modifier.fillMaxSize()) {
-            // TOP BAR
+            // ==========================================
+            // 1. TOP APP BAR & HEADER (Requirement #6)
+            // ==========================================
             Surface(
                 color = MythosTokens.Panel,
                 modifier = Modifier.fillMaxWidth(),
@@ -125,11 +171,39 @@ fun DeckBuilderScreen(
                             }
                             Spacer(modifier = Modifier.width(4.dp))
                             Column {
-                                Text(
-                                    text = "DECK BUILDER",
-                                    style = MythosTypography.GameTitle.copy(fontSize = 18.sp),
-                                    color = MythosTokens.PrimaryGold
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "DECK BUILDER",
+                                        style = MythosTypography.GameTitle.copy(fontSize = 17.sp),
+                                        color = MythosTokens.PrimaryGold
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    // VALID / INVALID Badge (Requirement #6)
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(
+                                                if (validationResult.isValid) MythosTokens.HealthGreen.copy(alpha = 0.2f)
+                                                else MythosTokens.Damage.copy(alpha = 0.2f)
+                                            )
+                                            .border(
+                                                0.8.dp,
+                                                if (validationResult.isValid) MythosTokens.HealthGreen
+                                                else MythosTokens.Damage,
+                                                RoundedCornerShape(4.dp)
+                                            )
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = if (validationResult.isValid) "VALID" else "INVALID",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (validationResult.isValid) MythosTokens.HealthGreen else MythosTokens.Damage,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                }
+
                                 Text(
                                     text = "${heroDef.name} • ${workingCardIds.size} / 20 CARDS",
                                     style = MythosTypography.HeroTitle.copy(fontSize = 11.sp),
@@ -138,16 +212,15 @@ fun DeckBuilderScreen(
                             }
                         }
 
-                        // Save Button
+                        // Action Buttons: RESET & SAVE DECK (Requirement #11)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Reset to default
                             OutlinedButton(
                                 onClick = {
-                                    workingCardIds = HeroCatalog.HERCULES.defaultDeckCardIds.toMutableList()
-                                    saveStatusFeedback = "Reset to default Olympus deck."
+                                    workingCardIds = HeroCatalog.HERCULES.defaultDeckCardIds.toList().toMutableList()
+                                    userFeedbackMessage = "Reset to default Olympus 20-card deck."
                                 },
                                 shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(0.5.dp, MythosTokens.PanelBorder),
+                                border = BorderStroke(0.8.dp, MythosTokens.PanelBorder),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                 modifier = Modifier.height(34.dp)
                             ) {
@@ -156,14 +229,15 @@ fun DeckBuilderScreen(
 
                             Button(
                                 onClick = {
-                                    val result = PlayerEconomyRepository.instance.saveActiveDeck(workingDeck)
+                                    val result = PlayerEconomyRepository.instance.saveActiveDeck(workingDeck.createDefensiveCopy())
                                     if (result.isValid) {
-                                        saveStatusFeedback = "Deck saved successfully!"
+                                        userFeedbackMessage = "Deck saved successfully!"
+                                        onNavigateBack()
                                     } else {
-                                        saveStatusFeedback = result.primaryErrorMessage ?: "Validation error."
+                                        userFeedbackMessage = result.primaryErrorMessage ?: "Cannot save: Deck is invalid."
                                     }
                                 },
-                                enabled = validationResult.isValid,
+                                enabled = validationResult.isValid && workingCardIds.size == ActiveDeck.REQUIRED_DECK_SIZE,
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MythosTokens.PrimaryGold,
                                     contentColor = Color(0xFF161202),
@@ -171,7 +245,7 @@ fun DeckBuilderScreen(
                                     disabledContentColor = MythosTokens.TextMuted
                                 ),
                                 shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                 modifier = Modifier
                                     .height(34.dp)
                                     .testTag("deck_builder_save_btn")
@@ -188,17 +262,62 @@ fun DeckBuilderScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+
+                            Button(
+                                onClick = {
+                                    val result = PlayerEconomyRepository.instance.saveActiveDeck(workingDeck.createDefensiveCopy())
+                                    if (result.isValid) {
+                                        userFeedbackMessage = "Deck saved! Commencing battle..."
+                                        onStartBattleWithDeck()
+                                    } else {
+                                        userFeedbackMessage = result.primaryErrorMessage ?: "Cannot save: Deck is invalid."
+                                    }
+                                },
+                                enabled = validationResult.isValid && workingCardIds.size == ActiveDeck.REQUIRED_DECK_SIZE,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF22C55E),
+                                    contentColor = Color.Black,
+                                    disabledContainerColor = MythosTokens.PanelBorder,
+                                    disabledContentColor = MythosTokens.TextMuted
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier
+                                    .height(34.dp)
+                                    .testTag("deck_builder_battle_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = "BATTLE",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
 
-                    // Validation banner (Requirement #10)
-                    AnimatedVisibility(visible = !validationResult.isValid || saveStatusFeedback != null) {
+                    // Validation & Status Feedback Banner (Requirement #6, #10)
+                    val bannerMessage = userFeedbackMessage ?: if (!validationResult.isValid) {
+                        validationResult.primaryErrorMessage
+                    } else null
+
+                    AnimatedVisibility(visible = bannerMessage != null) {
                         Surface(
-                            color = if (validationResult.isValid) MythosTokens.PanelElevated else MythosTokens.Damage.copy(alpha = 0.2f),
+                            color = if (validationResult.isValid && userFeedbackMessage != null) {
+                                MythosTokens.PanelElevated
+                            } else {
+                                MythosTokens.Damage.copy(alpha = 0.22f)
+                            },
                             shape = RoundedCornerShape(6.dp),
                             border = BorderStroke(
-                                0.5.dp,
-                                if (validationResult.isValid) MythosTokens.PrimaryGold else MythosTokens.Damage
+                                0.8.dp,
+                                if (validationResult.isValid && userFeedbackMessage != null) MythosTokens.PrimaryGold
+                                else MythosTokens.Damage
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -209,16 +328,19 @@ fun DeckBuilderScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = if (validationResult.isValid) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                    imageVector = if (validationResult.isValid && userFeedbackMessage != null) Icons.Default.CheckCircle
+                                    else Icons.Default.Warning,
                                     contentDescription = null,
-                                    tint = if (validationResult.isValid) MythosTokens.PrimaryGold else MythosTokens.Damage,
+                                    tint = if (validationResult.isValid && userFeedbackMessage != null) MythosTokens.PrimaryGold
+                                    else MythosTokens.Damage,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = saveStatusFeedback ?: validationResult.primaryErrorMessage ?: "",
+                                    text = bannerMessage ?: "",
                                     style = MythosTypography.CardDescription.copy(fontSize = 11.sp),
-                                    color = if (validationResult.isValid) MythosTokens.PrimaryGold else MythosTokens.Damage,
+                                    color = if (validationResult.isValid && userFeedbackMessage != null) MythosTokens.PrimaryGold
+                                    else MythosTokens.Damage,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
@@ -227,7 +349,9 @@ fun DeckBuilderScreen(
                 }
             }
 
-            // SECTION 1: ACTIVE DECK TRAY (Cards currently in deck)
+            // ==========================================
+            // 2. CURRENT DECK TRAY (Requirement #7)
+            // ==========================================
             Surface(
                 color = MythosTokens.PanelElevated,
                 modifier = Modifier.fillMaxWidth()
@@ -251,30 +375,51 @@ fun DeckBuilderScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = if (workingCardIds.size == 20) MythosTokens.HealthGreen else MythosTokens.Damage
                             )
+                            if (workingCardIds.size < 20) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "• Need ${20 - workingCardIds.size} more",
+                                    fontSize = 10.sp,
+                                    color = MythosTokens.TextMuted
+                                )
+                            }
                         }
 
                         Text(
-                            text = "Tap card to remove",
-                            fontSize = 10.sp,
+                            text = "Tap to remove copy",
+                            fontSize = 9.5.sp,
                             color = MythosTokens.TextMuted
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                    // Horizontal list of unique cards in deck
+                    // Progress bar toward 20 cards
+                    LinearProgressIndicator(
+                        progress = { (workingCardIds.size / 20f).coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = if (workingCardIds.size == 20) MythosTokens.PrimaryGold else MythosTokens.Damage,
+                        trackColor = MythosTokens.PanelBorder
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Horizontal tray of unique cards in current working deck
                     val uniqueDeckCardIds = remember(workingCardIds) { workingCardIds.distinct() }
 
                     if (uniqueDeckCardIds.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(90.dp),
+                                .height(72.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Deck is empty. Add cards from the collection below.",
-                                style = MythosTypography.CardDescription,
+                                text = "Deck is empty. Tap cards below to add (up to 20).",
+                                style = MythosTypography.CardDescription.copy(fontSize = 11.sp),
                                 color = MythosTokens.TextMuted
                             )
                         }
@@ -288,14 +433,14 @@ fun DeckBuilderScreen(
                                 val level = economyState.cardLevels[cardId] ?: 1
                                 val card = CardCatalog.getCard(cardId, level)
 
-                                DeckCardCompactBadge(
+                                DeckCardTrayItem(
                                     card = card,
                                     count = count,
                                     onRemove = {
                                         val mutable = workingCardIds.toMutableList()
                                         mutable.remove(cardId)
                                         workingCardIds = mutable
-                                        saveStatusFeedback = null
+                                        userFeedbackMessage = null
                                     }
                                 )
                             }
@@ -304,13 +449,15 @@ fun DeckBuilderScreen(
                 }
             }
 
-            // SECTION 2: CARD COLLECTION POOL
+            // ==========================================
+            // 3. AVAILABLE CARDS POOL (Requirement #8, #9)
+            // ==========================================
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
-                // Filter row for collection pool
+                // Type Filter Chips Row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -331,7 +478,7 @@ fun DeckBuilderScreen(
                         modifier = Modifier.height(28.dp)
                     )
 
-                    CardType.values().forEach { type ->
+                    CardType.entries.forEach { type ->
                         val isSel = selectedFilterType == type
                         val color = MythosTokens.getCardTypeColor(type)
                         FilterChip(
@@ -349,18 +496,12 @@ fun DeckBuilderScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                // Owned cards eligible for deck
-                val candidateCards = remember(selectedFilterType, economyState.ownedCardIds) {
-                    CardCatalog.ALL_CARDS.filter { def ->
-                        economyState.ownedCardIds.contains(def.id) &&
-                                (selectedFilterType == null || def.type == selectedFilterType)
-                    }
-                }
-
+                // Available Cards Grid
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 145.dp),
+                    state = gridState,
                     contentPadding = PaddingValues(bottom = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -369,41 +510,68 @@ fun DeckBuilderScreen(
                     items(candidateCards, key = { it.id }) { cardDef ->
                         val inDeckCount = deckFrequencies[cardDef.id] ?: 0
                         val ownedCount = economyState.ownedCardCounts[cardDef.id] ?: 0
+                        val isOwned = ownedCount > 0
                         val level = economyState.cardLevels[cardDef.id] ?: 1
                         val card = cardDef.getCard(level)
 
                         val isMaxCopiesInDeck = inDeckCount >= ActiveDeck.MAX_DUPLICATES_PER_CARD
                         val isMaxOwnedInDeck = inDeckCount >= ownedCount
                         val isDeckFull = workingCardIds.size >= ActiveDeck.REQUIRED_DECK_SIZE
-                        val canAdd = !isMaxCopiesInDeck && !isMaxOwnedInDeck && !isDeckFull
+                        val canAdd = isOwned && !isMaxCopiesInDeck && !isMaxOwnedInDeck && !isDeckFull
+
+                        val isHighlighted = highlightedCardId == cardDef.id
 
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .clickable(enabled = canAdd) {
-                                    val mutable = workingCardIds.toMutableList()
-                                    mutable.add(cardDef.id)
-                                    workingCardIds = mutable
-                                    saveStatusFeedback = null
+                                .border(
+                                    width = if (isHighlighted) 2.dp else 0.dp,
+                                    color = if (isHighlighted) MythosTokens.PrimaryGold else Color.Transparent,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .clickable {
+                                    if (canAdd) {
+                                        val mutable = workingCardIds.toMutableList()
+                                        mutable.add(cardDef.id)
+                                        workingCardIds = mutable
+                                        userFeedbackMessage = null
+                                    } else {
+                                        userFeedbackMessage = when {
+                                            !isOwned -> "'${cardDef.name}' is locked. Obtain it from Summons or Shop."
+                                            isMaxCopiesInDeck -> "Maximum ${ActiveDeck.MAX_DUPLICATES_PER_CARD} copies of '${cardDef.name}' allowed in deck."
+                                            isMaxOwnedInDeck -> "All owned copies of '${cardDef.name}' are already in your deck ($ownedCount/$ownedCount)."
+                                            isDeckFull -> "Deck is full (20/20). Remove a card first."
+                                            else -> "Cannot add card."
+                                        }
+                                    }
                                 }
                         ) {
+                            // Standard Card Frame representation
                             CardFrame(
                                 card = card,
                                 isPlayable = canAdd,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(200.dp),
+                                    .height(205.dp),
                                 onClick = {
                                     if (canAdd) {
                                         val mutable = workingCardIds.toMutableList()
                                         mutable.add(cardDef.id)
                                         workingCardIds = mutable
-                                        saveStatusFeedback = null
+                                        userFeedbackMessage = null
+                                    } else {
+                                        userFeedbackMessage = when {
+                                            !isOwned -> "'${cardDef.name}' is locked. Obtain it from Summons or Shop."
+                                            isMaxCopiesInDeck -> "Maximum ${ActiveDeck.MAX_DUPLICATES_PER_CARD} copies of '${cardDef.name}' allowed."
+                                            isMaxOwnedInDeck -> "All owned copies are already in deck."
+                                            isDeckFull -> "Deck is full (20/20)."
+                                            else -> "Cannot add card."
+                                        }
                                     }
                                 }
                             )
 
-                            // Status badge on top
+                            // Status Header Badges (Requirement #8: Level, Owned, In Deck)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -411,6 +579,7 @@ fun DeckBuilderScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                // Level badge
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
@@ -425,6 +594,7 @@ fun DeckBuilderScreen(
                                     )
                                 }
 
+                                // Owned & In-Deck counts (Requirement #8)
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
@@ -435,21 +605,50 @@ fun DeckBuilderScreen(
                                         .padding(horizontal = 5.dp, vertical = 2.dp)
                                 ) {
                                     Text(
-                                        text = "DECK: $inDeckCount/$ownedCount",
-                                        fontSize = 8.5.sp,
+                                        text = "Owned: $ownedCount • Deck: $inDeckCount",
+                                        fontSize = 8.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (inDeckCount > 0) Color(0xFF161202) else Color(0xFFC7C2D3)
                                     )
                                 }
                             }
 
-                            // Add Button Overlay at bottom
+                            // Locked Card Overlay (Requirement #9)
+                            if (!isOwned) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0x8C0B0914)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lock,
+                                            contentDescription = "Locked",
+                                            tint = MythosTokens.PrimaryGold,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "LOCKED",
+                                            style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
+                                            color = MythosTokens.PrimaryGold
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Bottom Action Strip (Requirement #9)
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
                                     .background(
-                                        if (canAdd) MythosTokens.PrimaryGold.copy(alpha = 0.9f)
+                                        if (canAdd) MythosTokens.PrimaryGold.copy(alpha = 0.92f)
                                         else Color(0xCC1A1626)
                                     )
                                     .padding(vertical = 4.dp),
@@ -457,10 +656,11 @@ fun DeckBuilderScreen(
                             ) {
                                 Text(
                                     text = when {
-                                        isMaxCopiesInDeck -> "MAX COPIES (2/2)"
+                                        !isOwned -> "LOCKED"
+                                        isMaxCopiesInDeck -> "MAX IN DECK (2/2)"
                                         isMaxOwnedInDeck -> "ALL OWNED IN DECK"
                                         isDeckFull -> "DECK FULL (20/20)"
-                                        else -> "+ ADD TO DECK"
+                                        else -> "+ ADD TO DECK ($inDeckCount/2)"
                                     },
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.ExtraBold,
@@ -477,9 +677,10 @@ fun DeckBuilderScreen(
 
 /**
  * Compact horizontal badge for a card currently in the active deck tray.
+ * Displays artwork, cost, name, rarity border, level, and count (Requirement #7).
  */
 @Composable
-private fun DeckCardCompactBadge(
+private fun DeckCardTrayItem(
     card: Card,
     count: Int,
     onRemove: () -> Unit,
@@ -492,7 +693,7 @@ private fun DeckCardCompactBadge(
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, rarityColor),
         modifier = modifier
-            .width(110.dp)
+            .width(115.dp)
             .height(72.dp)
             .clip(RoundedCornerShape(8.dp))
             .clickable { onRemove() }
@@ -500,7 +701,7 @@ private fun DeckCardCompactBadge(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(6.dp),
+                .padding(5.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
@@ -540,6 +741,7 @@ private fun DeckCardCompactBadge(
                 }
             }
 
+            // Card name
             Text(
                 text = card.name,
                 style = MythosTypography.CardName.copy(fontSize = 10.sp),
@@ -548,6 +750,7 @@ private fun DeckCardCompactBadge(
                 overflow = TextOverflow.Ellipsis
             )
 
+            // Bottom row: Level and tap to remove
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -561,10 +764,10 @@ private fun DeckCardCompactBadge(
                 )
 
                 Text(
-                    text = "TAP TO REMOVE",
+                    text = "REMOVE",
                     fontSize = 7.5.sp,
                     color = MythosTokens.Damage,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.Bold
                 )
             }
         }

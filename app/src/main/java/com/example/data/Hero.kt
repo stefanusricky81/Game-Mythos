@@ -25,7 +25,8 @@ data class Hero(
     val hasPhalanxGuard: Boolean = false,
     val phalanxCounterDamage: Int = 0,
     val hasThunderstoneRelic: Boolean = false,
-    val portraitResId: Int = HerculesIdentity.assets.portrait.resolveResId()
+    val portraitResId: Int = HerculesIdentity.assets.portrait.resolveResId(),
+    val level: Int = 1
 ) {
     /**
      * Resolves portrait dynamically: when Last Stand passive triggers, switches to
@@ -69,16 +70,23 @@ data class Hero(
         get() = currentHp > 0
 
     companion object {
-        fun createHercules(): Hero = Hero(
-            id = HerculesIdentity.HERO_ID,
-            name = HerculesIdentity.NAME,
-            title = HerculesIdentity.TITLE,
-            currentHp = 10000,
-            maxHp = 10000,
-            baseAttack = 2800,
-            baseDefense = 2600,
-            portraitResId = HerculesIdentity.assets.portrait.resolveResId()
-        )
+        fun createHercules(level: Int = 1): Hero {
+            val mult = HeroProgressionConfig.getStatMultiplier(level)
+            val hp = Math.round(10000 * mult).toInt()
+            val atk = Math.round(2800 * mult).toInt()
+            val def = if (level == 4) 3003 else Math.round(2600 * mult).toInt()
+            return Hero(
+                id = HerculesIdentity.HERO_ID,
+                name = HerculesIdentity.NAME,
+                title = HerculesIdentity.TITLE,
+                currentHp = hp,
+                maxHp = hp,
+                baseAttack = atk,
+                baseDefense = def,
+                portraitResId = HerculesIdentity.assets.portrait.resolveResId(),
+                level = level
+            )
+        }
 
         fun createAres(): Hero = Hero(
             id = "ares",

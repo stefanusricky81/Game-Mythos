@@ -41,6 +41,9 @@ val CardTypeTrap = Color(0xFFEC4899)
 // Energy & Myth Power
 val EnergyCyan = MythosTokens.Energy
 val EnergyCyanDark = MythosTokens.EnergyDark
+val EnergyGold = MythosTokens.EnergyGold
+val HealthGreen = MythosTokens.HealthGreen
 val MythPowerGold = MythosTokens.MythPower
 val MythPowerFlame = MythosTokens.MythPowerFlame
 val ShieldSilver = MythosTokens.Shield
+val Legendary = MythosTokens.Legendary

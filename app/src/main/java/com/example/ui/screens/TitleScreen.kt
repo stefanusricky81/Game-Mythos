@@ -1,11 +1,13 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -26,7 +28,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.MythosConfig
 import com.example.R
+import com.example.data.DeckValidationResult
+import com.example.data.DeckValidator
 import com.example.data.HerculesIdentity
+import com.example.data.HeroCatalog
 import com.example.monetization.PlayerEconomyRepository
 import com.example.ui.components.MythosButton
 import com.example.ui.components.MythosButtonStyle
@@ -37,13 +42,20 @@ import java.util.Locale
 @Composable
 fun TitleScreen(
     onStartBattle: () -> Unit,
+    onOpenCampaign: () -> Unit = {},
+    onOpenHeroSelection: () -> Unit = {},
     onViewDeck: () -> Unit,
     onOpenShop: () -> Unit,
+    onOpenCollection: () -> Unit = {},
+    onOpenDeckBuilder: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showGuideDialog by remember { mutableStateOf(false) }
+    var showInvalidDeckDialog by remember { mutableStateOf(false) }
+    var invalidDeckResult by remember { mutableStateOf<DeckValidationResult?>(null) }
     val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
     val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
+    val currentHero = HeroCatalog.findHero(economyState.selectedHeroId) ?: HeroCatalog.HERCULES
 
     Box(
         modifier = modifier
@@ -158,12 +170,14 @@ fun TitleScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Main Hero Showcase: Hercules
+            // Main Hero Showcase: Dynamic Active Champion (Clickable to switch heroes)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .border(1.dp, MythosTokens.SecondaryGold, RoundedCornerShape(16.dp)),
+                    .border(1.dp, MythosTokens.SecondaryGold, RoundedCornerShape(16.dp))
+                    .clickable { onOpenHeroSelection() }
+                    .testTag("hero_showcase_card"),
                 colors = CardDefaults.cardColors(containerColor = MythosTokens.Panel)
             ) {
                 Column(
@@ -173,41 +187,73 @@ fun TitleScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(74.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .border(1.dp, MythosTokens.PrimaryGold, RoundedCornerShape(10.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Image(
-                                painter = painterResource(id = HerculesIdentity.assets.portrait.resolveResId()),
-                                contentDescription = HerculesIdentity.NAME,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(74.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .border(1.dp, MythosTokens.PrimaryGold, RoundedCornerShape(10.dp))
+                            ) {
+                                Image(
+                                    painter = painterResource(id = currentHero.portraitResId),
+                                    contentDescription = currentHero.name,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column {
+                                Text(
+                                    text = currentHero.name.uppercase(),
+                                    style = MythosTypography.HeroName.copy(fontSize = 18.sp),
+                                    color = MythosTokens.PrimaryGold
+                                )
+                                Text(
+                                    text = "${currentHero.title} • ${currentHero.faction}",
+                                    style = MythosTypography.HeroTitle.copy(fontSize = 11.sp)
+                                )
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    MiniStatBadge("HP ${numberFormat.format(currentHero.baseHp)}", MythosTokens.Success)
+                                    MiniStatBadge("ATK ${numberFormat.format(currentHero.baseAttack)}", MythosTokens.Damage)
+                                    MiniStatBadge("DEF ${numberFormat.format(currentHero.baseDefense)}", MythosTokens.DivineBlue)
+                                }
+                            }
                         }
 
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Column {
-                            Text(
-                                text = HerculesIdentity.NAME.uppercase(),
-                                style = MythosTypography.HeroName.copy(fontSize = 18.sp),
-                                color = MythosTokens.PrimaryGold
-                            )
-                            Text(
-                                text = "${HerculesIdentity.TITLE} • ${HerculesIdentity.FACTION.displayName}",
-                                style = MythosTypography.HeroTitle.copy(fontSize = 11.sp)
-                            )
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                MiniStatBadge("HP 10,000", MythosTokens.Success)
-                                MiniStatBadge("ATK 2,800", MythosTokens.Damage)
-                                MiniStatBadge("DEF 2,600", MythosTokens.DivineBlue)
+                        // Switch Hero pill
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MythosTokens.PanelElevated)
+                                .border(0.5.dp, MythosTokens.PrimaryGold.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SwapHoriz,
+                                    contentDescription = "Switch",
+                                    tint = MythosTokens.PrimaryGold,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "HEROES",
+                                    style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
+                                    color = MythosTokens.PrimaryGold
+                                )
                             }
                         }
                     }
@@ -232,14 +278,15 @@ fun TitleScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Passive — LAST STAND:",
+                                text = "Passive — ${currentHero.passiveName}:",
                                 style = MythosTypography.CardName,
                                 color = MythosTokens.PrimaryGold
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "< 30% HP triggers +25% ATK",
-                                style = MythosTypography.CardDescription
+                                text = currentHero.passiveDescription,
+                                style = MythosTypography.CardDescription,
+                                maxLines = 1
                             )
                         }
 
@@ -252,14 +299,15 @@ fun TitleScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Ultimate — TWELVE LABORS:",
+                                text = "Ultimate — ${currentHero.ultimateName}:",
                                 style = MythosTypography.CardName,
                                 color = MythosTokens.MythPowerFlame
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "100 MP deals 4,500 damage",
-                                style = MythosTypography.CardDescription
+                                text = currentHero.ultimateDescription,
+                                style = MythosTypography.CardDescription,
+                                maxLines = 1
                             )
                         }
                     }
@@ -273,18 +321,41 @@ fun TitleScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Primary CTA: CAMPAIGN (Phase 7A Requirement)
                 MythosButton(
-                    text = "START BATTLE (VS ARES)",
-                    onClick = onStartBattle,
+                    text = "CAMPAIGN",
+                    subtitle = "World 1 • Aegean / Olympus • 5 Stages",
+                    onClick = onOpenCampaign,
                     style = MythosButtonStyle.PRIMARY,
-                    icon = Icons.Default.PlayArrow,
-                    testTag = "start_battle_button",
+                    icon = Icons.Default.Explore,
+                    testTag = "open_campaign_button",
                     modifier = Modifier.fillMaxWidth().height(52.dp)
+                )
+
+                // Hero Selection
+                MythosButton(
+                    text = "HERO SELECTION",
+                    subtitle = "Choose Champion • Hercules, Achilles, Merlin",
+                    onClick = onOpenHeroSelection,
+                    style = MythosButtonStyle.SECONDARY,
+                    icon = Icons.Default.Person,
+                    testTag = "open_hero_selection_button",
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                )
+
+                MythosButton(
+                    text = "COLLECTION",
+                    subtitle = "Cards, Heroes & Progression",
+                    onClick = onOpenCollection,
+                    style = MythosButtonStyle.SECONDARY,
+                    icon = Icons.Default.CollectionsBookmark,
+                    testTag = "open_collection_button",
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
                 )
 
                 MythosButton(
                     text = "INSPECT CARD DECK",
-                    subtitle = "10 Cards • Rarity Showcase",
+                    subtitle = "Active Deck • 20 Cards",
                     onClick = onViewDeck,
                     style = MythosButtonStyle.SECONDARY,
                     icon = Icons.Default.Layers,
@@ -299,6 +370,25 @@ fun TitleScreen(
                     style = MythosButtonStyle.SECONDARY,
                     icon = Icons.Default.ShoppingCart,
                     testTag = "open_shop_button",
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                )
+
+                // Quick direct battle retained for development and test coverage
+                MythosButton(
+                    text = "DIRECT BATTLE (VS ARES)",
+                    subtitle = "Quick Battle Testing",
+                    onClick = {
+                        val validation = DeckValidator.validate(economyState.activeDeck, economyState.ownedCardCounts)
+                        if (!validation.isValid) {
+                            invalidDeckResult = validation
+                            showInvalidDeckDialog = true
+                        } else {
+                            onStartBattle()
+                        }
+                    },
+                    style = MythosButtonStyle.SECONDARY,
+                    icon = Icons.Default.PlayArrow,
+                    testTag = "start_battle_button",
                     modifier = Modifier.fillMaxWidth().height(48.dp)
                 )
 
@@ -370,6 +460,109 @@ fun TitleScreen(
                             style = MythosButtonStyle.PRIMARY,
                             modifier = Modifier.fillMaxWidth()
                         )
+                    }
+                }
+            }
+        }
+
+        // Invalid Deck Warning Modal (Requirement #4, #17)
+        if (showInvalidDeckDialog) {
+            Dialog(onDismissRequest = { showInvalidDeckDialog = false }) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.95f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(1.5.dp, MythosTokens.Damage, RoundedCornerShape(16.dp))
+                        .testTag("invalid_deck_dialog"),
+                    colors = CardDefaults.cardColors(containerColor = MythosTokens.Panel)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .background(MythosTokens.Damage.copy(alpha = 0.2f))
+                                .border(1.dp, MythosTokens.Damage, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MythosTokens.Damage,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "Your deck is invalid.",
+                            style = MythosTypography.GameTitle.copy(fontSize = 20.sp),
+                            color = MythosTokens.Damage,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Text(
+                            text = "Create and save a valid 20-card deck before entering battle.",
+                            style = MythosTypography.HeroTitle.copy(fontSize = 13.sp),
+                            color = MythosTokens.TextPrimary,
+                            textAlign = TextAlign.Center
+                        )
+
+                        val errorMsg = invalidDeckResult?.primaryErrorMessage
+                            ?: "Deck must contain exactly 20 cards within card ownership limits."
+                        Surface(
+                            color = MythosTokens.BackgroundSurface,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(0.8.dp, MythosTokens.PanelBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = errorMsg,
+                                style = MythosTypography.CardDescription.copy(fontSize = 11.sp),
+                                color = MythosTokens.TextSecondary,
+                                modifier = Modifier.padding(10.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Button(
+                            onClick = {
+                                showInvalidDeckDialog = false
+                                onOpenDeckBuilder()
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("go_to_deck_builder_button"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MythosTokens.PrimaryGold,
+                                contentColor = Color(0xFF161202)
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("GO TO DECK BUILDER", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = { showInvalidDeckDialog = false },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .testTag("cancel_invalid_deck_dialog"),
+                            border = BorderStroke(1.dp, MythosTokens.PanelBorder),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("CANCEL", fontSize = 12.sp, color = MythosTokens.TextMuted)
+                        }
                     }
                 }
             }

@@ -62,7 +62,7 @@ fun CardDetailDialog(
                             .padding(horizontal = 8.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "${card.rarity.label.uppercase()} • ${card.type.label.uppercase()}",
+                            text = "${card.rarity.label.uppercase()} • ${card.type.label.uppercase()} • LV.${card.level}",
                             color = rarityColor,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
@@ -113,7 +113,7 @@ fun CardDetailDialog(
                 )
 
                 Text(
-                    text = "Cost: ${card.cost} Energy",
+                    text = "Cost: ${card.cost} Energy • Level ${card.level}/${card.maxLevel}",
                     color = EnergyCyan,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
