@@ -33,6 +33,7 @@ import com.example.data.DeckValidator
 import com.example.data.HerculesIdentity
 import com.example.data.HeroCatalog
 import com.example.monetization.PlayerEconomyRepository
+import com.example.ui.components.DailyRewardDialog
 import com.example.ui.components.MythosButton
 import com.example.ui.components.MythosButtonStyle
 import com.example.ui.theme.*
@@ -48,14 +49,29 @@ fun TitleScreen(
     onOpenShop: () -> Unit,
     onOpenCollection: () -> Unit = {},
     onOpenDeckBuilder: () -> Unit = {},
+    onOpenProfile: () -> Unit = {},
+    onOpenDailyQuests: () -> Unit = {},
+    onOpenAlliance: () -> Unit = {},
+    onOpenEvents: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showGuideDialog by remember { mutableStateOf(false) }
     var showInvalidDeckDialog by remember { mutableStateOf(false) }
+    var showDailyRewardDialog by remember { mutableStateOf(false) }
     var invalidDeckResult by remember { mutableStateOf<DeckValidationResult?>(null) }
     val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
     val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     val currentHero = HeroCatalog.findHero(economyState.selectedHeroId) ?: HeroCatalog.HERCULES
+    val playerProgress = economyState.playerProgress
+    val dailyQuests = economyState.dailyQuests
+    val completedQuestsCount = dailyQuests.count { it.isCompleted }
+    val readyQuestsCount = dailyQuests.count { it.isCompleted && !it.isClaimed }
+    val canClaimDailyReward = remember(economyState.lastLoginRewardDate) {
+        PlayerEconomyRepository.instance.canClaimDailyLoginReward()
+    }
+    val activeEventsCount = remember(economyState.activeEvents) {
+        economyState.activeEvents.count { it.isCurrentlyActive }
+    }
 
     Box(
         modifier = modifier
@@ -164,6 +180,216 @@ fun TitleScreen(
                             style = MythosTypography.HeroName.copy(fontSize = 12.sp),
                             color = MythosTokens.DivineBlueLight
                         )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Compact Profile & Daily Quests Quick Hub (Phase 7D Section 8, 15)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Compact Profile Card
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(1.dp, MythosTokens.PanelBorder, RoundedCornerShape(10.dp))
+                            .clickable { onOpenProfile() }
+                            .testTag("home_profile_card"),
+                        colors = CardDefaults.cardColors(containerColor = MythosTokens.PanelElevated)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(MythosTokens.PrimaryGold.copy(alpha = 0.2f))
+                                    .border(1.dp, MythosTokens.PrimaryGold, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "${playerProgress.playerLevel}",
+                                    style = MythosTypography.HeroName.copy(fontSize = 11.sp),
+                                    color = MythosTokens.PrimaryGold
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "PROFILE",
+                                    style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
+                                    color = MythosTokens.PrimaryGold
+                                )
+                                Text(
+                                    text = "Lvl ${playerProgress.playerLevel} • ${playerProgress.totalVictories} Wins",
+                                    style = MythosTypography.CardDescription.copy(fontSize = 10.sp),
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    // Compact Daily Quests Card (Phase 7D Section 15)
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(
+                                1.dp,
+                                if (readyQuestsCount > 0) MythosTokens.PrimaryGold else MythosTokens.PanelBorder,
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable { onOpenDailyQuests() }
+                            .testTag("home_daily_quests_card"),
+                        colors = CardDefaults.cardColors(containerColor = MythosTokens.PanelElevated)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(text = "📋", fontSize = 16.sp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "DAILY QUESTS",
+                                    style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
+                                    color = MythosTokens.PrimaryGold
+                                )
+                                Text(
+                                    text = if (readyQuestsCount > 0) "$readyQuestsCount READY" else "$completedQuestsCount/5 COMPLETE",
+                                    style = MythosTypography.HeroName.copy(fontSize = 10.sp),
+                                    color = if (readyQuestsCount > 0) MythosTokens.PrimaryGold else MythosTokens.TextMuted
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Alliance & Events Strip (Phase 8 Section 9)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Alliance Hub Shortcut
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(1.dp, MythosTokens.PanelBorder, RoundedCornerShape(10.dp))
+                            .clickable { onOpenAlliance() }
+                            .testTag("home_alliance_card"),
+                        colors = CardDefaults.cardColors(containerColor = MythosTokens.PanelElevated)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(text = "🏛️", fontSize = 16.sp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "ALLIANCE",
+                                    style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
+                                    color = MythosTokens.PrimaryGold
+                                )
+                                Text(
+                                    text = if (playerProgress.allianceId != null) playerProgress.allianceName ?: "Active Alliance" else "Join or Found",
+                                    style = MythosTypography.CardDescription.copy(fontSize = 10.sp),
+                                    color = if (playerProgress.allianceId != null) Color.White else MythosTokens.TextMuted,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+
+                    // Limited Events Shortcut
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(
+                                1.dp,
+                                if (activeEventsCount > 0) MythosTokens.DivineBlueLight else MythosTokens.PanelBorder,
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable { onOpenEvents() }
+                            .testTag("home_events_card"),
+                        colors = CardDefaults.cardColors(containerColor = MythosTokens.PanelElevated)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(text = "⚡", fontSize = 16.sp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "EVENTS",
+                                    style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
+                                    color = MythosTokens.DivineBlueLight
+                                )
+                                Text(
+                                    text = if (activeEventsCount > 0) "$activeEventsCount LIVE NOW" else "Upcoming",
+                                    style = MythosTypography.HeroName.copy(fontSize = 10.sp),
+                                    color = if (activeEventsCount > 0) MythosTokens.DivineBlueLight else MythosTokens.TextMuted
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Daily Login Reward Banner if Claimable (Phase 7D Section 18)
+                if (canClaimDailyReward) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, MythosTokens.PrimaryGold, RoundedCornerShape(8.dp))
+                            .clickable { showDailyRewardDialog = true }
+                            .testTag("home_daily_reward_banner"),
+                        colors = CardDefaults.cardColors(containerColor = MythosTokens.PrimaryGold.copy(alpha = 0.15f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(text = "🎁", fontSize = 14.sp)
+                                Text(
+                                    text = "Daily Login Reward Available!",
+                                    style = MythosTypography.CardName.copy(fontSize = 11.sp),
+                                    color = MythosTokens.PrimaryGold
+                                )
+                            }
+                            Text(
+                                text = "CLAIM ›",
+                                style = MythosTypography.RarityLabel.copy(fontSize = 10.sp),
+                                color = MythosTokens.PrimaryGold,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -350,6 +576,39 @@ fun TitleScreen(
                     style = MythosButtonStyle.SECONDARY,
                     icon = Icons.Default.CollectionsBookmark,
                     testTag = "open_collection_button",
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                )
+
+                // Daily Quests Entry (Phase 7D Section 15, 19)
+                MythosButton(
+                    text = "DAILY QUESTS",
+                    subtitle = if (readyQuestsCount > 0) "$readyQuestsCount Rewards Ready to Claim!" else "$completedQuestsCount/5 Complete • Resets Daily",
+                    onClick = onOpenDailyQuests,
+                    style = MythosButtonStyle.SECONDARY,
+                    icon = Icons.Default.Assignment,
+                    testTag = "open_daily_quests_button",
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                )
+
+                // Alliance Hall Entry (Phase 8 Section 2, 9)
+                MythosButton(
+                    text = "ALLIANCE",
+                    subtitle = if (playerProgress.allianceId != null) "${playerProgress.allianceName} • Member Roster & Perks" else "Unite with Champions • Join or Found",
+                    onClick = onOpenAlliance,
+                    style = MythosButtonStyle.SECONDARY,
+                    icon = Icons.Default.Groups,
+                    testTag = "open_alliance_button",
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                )
+
+                // Limited-Time Events Entry (Phase 8 Section 8, 9)
+                MythosButton(
+                    text = "LIMITED-TIME EVENTS",
+                    subtitle = if (activeEventsCount > 0) "$activeEventsCount Active Raids & Proving Grounds" else "Seasonal Trials & Raids",
+                    onClick = onOpenEvents,
+                    style = MythosButtonStyle.SECONDARY,
+                    icon = Icons.Default.Whatshot,
+                    testTag = "open_events_button",
                     modifier = Modifier.fillMaxWidth().height(48.dp)
                 )
 
@@ -566,6 +825,11 @@ fun TitleScreen(
                     }
                 }
             }
+        }
+
+        // Daily Login Reward Modal (Phase 7D Section 17, 18)
+        if (showDailyRewardDialog) {
+            DailyRewardDialog(onDismissRequest = { showDailyRewardDialog = false })
         }
     }
 }

@@ -156,6 +156,9 @@ class BattleViewModel : ViewModel() {
             } else {
                 val rewardCard = config?.rewardCardId ?: "c_divine_aegis"
                 PlayerEconomyRepository.instance.claimBattleVictoryRewards(_uiState.value.rewards, rewardCard)
+                val state = _uiState.value
+                PlayerEconomyRepository.instance.recordBattleFinished(isVictory = true, stats = state.stats, isCampaign = false)
+                PlayerEconomyRepository.instance.addPlayerXp(_uiState.value.rewards.xp)
             }
         }
         soundManager?.playVictorySound()
@@ -265,6 +268,7 @@ class BattleViewModel : ViewModel() {
     }
 
     private fun executeCardEffects(card: Card) {
+        PlayerEconomyRepository.instance.onCardPlayed()
         val curState = _uiState.value
         var pHero = curState.playerHero
         var eHero = curState.enemyHero
@@ -283,6 +287,7 @@ class BattleViewModel : ViewModel() {
                 bonusAgainstShield = card.effect.bonusDamageAgainstShield
             )
             eHero = damageResult.updatedDefender
+            PlayerEconomyRepository.instance.onDamageDealt(damageResult.modifiedDamage)
 
             if (damageResult.shieldAbsorbed > 0) soundManager?.playShieldSound()
             if (damageResult.hpDamageDealt > 0) soundManager?.playAttackSound()
@@ -481,6 +486,7 @@ class BattleViewModel : ViewModel() {
             )
 
             val updatedEnemy = damageResult.updatedDefender
+            PlayerEconomyRepository.instance.onDamageDealt(damageResult.modifiedDamage)
             val newLogs = curState.combatLogs.toMutableList()
             newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "Hercules strikes Ares for ${damageResult.modifiedDamage} damage.", LogType.ATTACK))
 
@@ -574,6 +580,7 @@ class BattleViewModel : ViewModel() {
             )
 
             val isVictory = !updatedEnemy.isAlive
+            PlayerEconomyRepository.instance.onDamageDealt(damageResult.modifiedDamage)
 
             _uiState.update {
                 it.copy(
@@ -844,6 +851,11 @@ class BattleViewModel : ViewModel() {
                 )
             }
             soundManager?.playDefeatSound()
+            PlayerEconomyRepository.instance.recordBattleFinished(
+                isVictory = false,
+                stats = state.stats,
+                isCampaign = activeEncounterConfig?.stageId != null
+            )
             return
         }
 

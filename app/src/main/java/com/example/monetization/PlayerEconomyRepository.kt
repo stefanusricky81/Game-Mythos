@@ -65,8 +65,23 @@ data class PlayerEconomyState(
     val hasMonthlyPass: Boolean = false,
     val hasBattlePass: Boolean = false,
     val pityState: SummonPityState = SummonPityState(),
-    val purchaseHistory: List<PurchaseRecord> = emptyList()
+    val purchaseHistory: List<PurchaseRecord> = emptyList(),
+    val alliances: List<Alliance> = AllianceCatalog.createDefaultAlliances(),
+    val playerAllianceId: String? = null,
+    val activeEvents: List<MythosEvent> = EventCatalog.getDefaultEvents(),
+    val notifications: List<MythosNotification> = emptyList()
 ) {
+    val playerAlliance: Alliance?
+        get() = alliances.find { it.allianceId == playerAllianceId }
+
+    val playerMemberRecord: AllianceMember?
+        get() = playerAlliance?.members?.find { it.playerId == "player_local" }
+
+    val isLeaderOfAlliance: Boolean
+        get() = playerMemberRecord?.role == AllianceRole.LEADER
+
+    val isOfficerOfAlliance: Boolean
+        get() = playerMemberRecord?.role == AllianceRole.OFFICER || playerMemberRecord?.role == AllianceRole.LEADER
     /**
      * Retrieves a single unified CardInstance for a specific card.
      * (Phase 6A Requirement #4)
@@ -189,6 +204,12 @@ class PlayerEconomyRepository(
             val savedTotalCampaignStages = prefs.getInt("saved_total_campaign_stages", 0)
             val savedClaimedLevelRewardsSet = prefs.getStringSet("saved_claimed_level_rewards", emptySet())
             val claimedLevelRewards = savedClaimedLevelRewardsSet?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
+            val savedLoginStreak = prefs.getInt("saved_login_streak", 1)
+            val savedHighestLoginStreak = prefs.getInt("saved_highest_login_streak", 1)
+            val savedPlayerAllianceId = prefs.getString("saved_player_alliance_id", null)
+            val savedAllianceName = prefs.getString("saved_player_alliance_name", null)
+            val savedAllianceRole = prefs.getString("saved_player_alliance_role", null)
+            val savedAllianceContribution = prefs.getLong("saved_alliance_contribution", 0L)
 
             val playerProgress = PlayerProgress(
                 playerLevel = savedPlayerLevel,
@@ -200,8 +221,65 @@ class PlayerEconomyRepository(
                 totalDamageDealt = savedTotalDamageDealt,
                 totalDamageTaken = savedTotalDamageTaken,
                 totalCampaignStagesCleared = savedTotalCampaignStages,
-                claimedLevelRewards = claimedLevelRewards
+                claimedLevelRewards = claimedLevelRewards,
+                loginStreak = savedLoginStreak,
+                highestLoginStreak = savedHighestLoginStreak,
+                allianceId = savedPlayerAllianceId,
+                allianceName = savedAllianceName,
+                allianceRole = savedAllianceRole,
+                allianceContribution = savedAllianceContribution
             )
+
+            val savedAlliancesJson = prefs.getString("saved_alliances_json", null)
+            val restoredAlliances = if (savedAlliancesJson != null) {
+                try {
+                    val arr = org.json.JSONArray(savedAlliancesJson)
+                    val list = mutableListOf<Alliance>()
+                    for (i in 0 until arr.length()) {
+                        val aObj = arr.getJSONObject(i)
+                        val mArr = aObj.optJSONArray("members")
+                        val members = mutableListOf<AllianceMember>()
+                        if (mArr != null) {
+                            for (j in 0 until mArr.length()) {
+                                val mObj = mArr.getJSONObject(j)
+                                members.add(
+                                    AllianceMember(
+                                        playerId = mObj.getString("player_id"),
+                                        name = mObj.getString("name"),
+                                        playerLevel = mObj.optInt("player_level", 1),
+                                        heroId = mObj.optString("hero_id", "hero_hercules"),
+                                        combatPower = mObj.optInt("combat_power", 1200),
+                                        role = try { AllianceRole.valueOf(mObj.getString("role")) } catch (e: Exception) { AllianceRole.MEMBER },
+                                        joinedDate = mObj.optString("joined_date", "2026-09-20"),
+                                        battlesWon = mObj.optInt("battles_won", 0),
+                                        damageDealt = mObj.optLong("damage_dealt", 0L),
+                                        campaignClears = mObj.optInt("campaign_clears", 0),
+                                        questsCompleted = mObj.optInt("quests_completed", 0),
+                                        contributionScore = mObj.optLong("contribution_score", 0L)
+                                    )
+                                )
+                            }
+                        }
+                        list.add(
+                            Alliance(
+                                allianceId = aObj.getString("alliance_id"),
+                                name = aObj.getString("name"),
+                                emblem = aObj.optString("emblem", "emblem_gold_eagle"),
+                                description = aObj.optString("description", "Warriors of Mount Olympus united in divine glory."),
+                                level = aObj.optInt("level", 1),
+                                xp = aObj.optInt("xp", 0),
+                                createdDate = aObj.optString("created_date", "2026-09-01"),
+                                members = members
+                            )
+                        )
+                    }
+                    if (list.isNotEmpty()) list else AllianceCatalog.createDefaultAlliances()
+                } catch (e: Exception) {
+                    AllianceCatalog.createDefaultAlliances()
+                }
+            } else {
+                AllianceCatalog.createDefaultAlliances()
+            }
 
             val savedDailyQuestDate = prefs.getString("saved_daily_quest_date", "") ?: ""
             val savedQuestsJson = prefs.getString("saved_daily_quests", null)
@@ -341,7 +419,9 @@ class PlayerEconomyRepository(
                     dailyQuests = dailyQuests,
                     dailyQuestDate = savedDailyQuestDate,
                     loginRewardDay = savedLoginRewardDay,
-                    lastLoginRewardDate = savedLastLoginRewardDate
+                    lastLoginRewardDate = savedLastLoginRewardDate,
+                    alliances = restoredAlliances,
+                    playerAllianceId = savedPlayerAllianceId
                 )
             }
         } catch (e: Exception) {
@@ -395,6 +475,38 @@ class PlayerEconomyRepository(
                 questsArray.put(qObj)
             }
 
+            val alliancesArray = org.json.JSONArray()
+            current.alliances.forEach { a ->
+                val aObj = JSONObject().apply {
+                    put("alliance_id", a.allianceId)
+                    put("name", a.name)
+                    put("emblem", a.emblem)
+                    put("description", a.description)
+                    put("level", a.level)
+                    put("xp", a.xp)
+                    put("created_date", a.createdDate)
+                    val mArr = org.json.JSONArray()
+                    a.members.forEach { m ->
+                        mArr.put(JSONObject().apply {
+                            put("player_id", m.playerId)
+                            put("name", m.name)
+                            put("player_level", m.playerLevel)
+                            put("hero_id", m.heroId)
+                            put("combat_power", m.combatPower)
+                            put("role", m.role.name)
+                            put("joined_date", m.joinedDate)
+                            put("battles_won", m.battlesWon)
+                            put("damage_dealt", m.damageDealt)
+                            put("campaign_clears", m.campaignClears)
+                            put("quests_completed", m.questsCompleted)
+                            put("contribution_score", m.contributionScore)
+                        })
+                    }
+                    put("members", mArr)
+                }
+                alliancesArray.put(aObj)
+            }
+
             val claimedRewardsSet = current.playerProgress.claimedLevelRewards.map { it.toString() }.toSet()
 
             prefs.edit()
@@ -427,6 +539,13 @@ class PlayerEconomyRepository(
                 .putString("saved_daily_quest_date", current.dailyQuestDate)
                 .putInt("saved_login_reward_day", current.loginRewardDay)
                 .putString("saved_last_login_reward_date", current.lastLoginRewardDate)
+                .putInt("saved_login_streak", current.playerProgress.loginStreak)
+                .putInt("saved_highest_login_streak", current.playerProgress.highestLoginStreak)
+                .putString("saved_player_alliance_id", current.playerAllianceId)
+                .putString("saved_player_alliance_name", current.playerProgress.allianceName)
+                .putString("saved_player_alliance_role", current.playerProgress.allianceRole)
+                .putLong("saved_alliance_contribution", current.playerProgress.allianceContribution)
+                .putString("saved_alliances_json", alliancesArray.toString())
                 .commit()
         } catch (e: Exception) {
             // Graceful error handling
@@ -686,22 +805,16 @@ class PlayerEconomyRepository(
     }
 
     /**
-     * Adds Player XP, levels up the player if threshold is reached, and awards level-up rewards (Phase 7D Sections 4, 5, 6).
-     * Never awards level-up rewards twice for the same level.
+     * Adds Player XP and levels up the player if threshold is reached (Phase 7D Sections 4, 5, 6).
      */
     @Synchronized
     fun addPlayerXp(xp: Int): List<PlayerLevelReward> {
         if (xp <= 0) return emptyList()
-        val awardedRewards = mutableListOf<PlayerLevelReward>()
+        val unlockedRewards = mutableListOf<PlayerLevelReward>()
 
         _economyState.update { current ->
             var curLevel = current.playerProgress.playerLevel
             var curXp = current.playerProgress.playerXp + xp
-            val claimedRewards = current.playerProgress.claimedLevelRewards.toMutableSet()
-            var currentGold = current.gold
-            var currentGems = current.mythGems
-            val currentCardShards = current.cardShards.toMutableMap()
-            val currentHeroShards = current.heroShards.toMutableMap()
 
             while (curLevel < PlayerProgressionConfig.MAX_PLAYER_LEVEL) {
                 val reqXp = PlayerProgressionConfig.getXpRequiredForNextLevel(curLevel)
@@ -709,21 +822,9 @@ class PlayerEconomyRepository(
                     curXp -= reqXp
                     curLevel += 1
 
-                    // Check level-up reward
                     val reward = PlayerProgressionConfig.getLevelReward(curLevel)
-                    if (reward != null && !claimedRewards.contains(curLevel)) {
-                        claimedRewards.add(curLevel)
-                        awardedRewards.add(reward)
-                        currentGold += reward.gold
-                        currentGems += reward.mythGems
-                        if (reward.cardShards > 0) {
-                            val targetCard = "c_heroic_rage"
-                            currentCardShards[targetCard] = (currentCardShards[targetCard] ?: 0) + reward.cardShards
-                        }
-                        if (reward.heroShards > 0) {
-                            val targetHero = current.selectedHeroId
-                            currentHeroShards[targetHero] = (currentHeroShards[targetHero] ?: 0) + reward.heroShards
-                        }
+                    if (reward != null) {
+                        unlockedRewards.add(reward)
                     }
                 } else {
                     break
@@ -732,21 +833,60 @@ class PlayerEconomyRepository(
 
             val updatedProgress = current.playerProgress.copy(
                 playerLevel = curLevel,
-                playerXp = curXp,
-                claimedLevelRewards = claimedRewards
+                playerXp = curXp
             )
 
             current.copy(
-                gold = currentGold,
-                mythGems = currentGems,
-                cardShards = currentCardShards,
-                heroShards = currentHeroShards,
                 playerProgress = updatedProgress,
                 activeDeck = current.activeDeck.createDefensiveCopy()
             )
         }
         saveToPersistence()
-        return awardedRewards
+        return unlockedRewards
+    }
+
+    /**
+     * Claims configured level-up reward atomically (Phase 7D Section 6, 21, 26).
+     * Never grants a level-up reward twice for the same player level.
+     */
+    @Synchronized
+    fun claimPlayerLevelReward(level: Int): Result<PlayerLevelReward> {
+        val current = _economyState.value
+        if (current.playerProgress.playerLevel < level) {
+            return Result.failure(IllegalStateException("Player level $level not reached yet (current: ${current.playerProgress.playerLevel})."))
+        }
+        if (current.playerProgress.claimedLevelRewards.contains(level)) {
+            return Result.failure(IllegalStateException("Level $level reward has already been claimed."))
+        }
+        val reward = PlayerProgressionConfig.getLevelReward(level)
+            ?: return Result.failure(IllegalArgumentException("No reward configured for level $level."))
+
+        _economyState.update { state ->
+            val newClaimed = state.playerProgress.claimedLevelRewards + level
+            val newGold = state.gold + reward.gold
+            val newGems = state.mythGems + reward.mythGems
+            val newCardShards = state.cardShards.toMutableMap()
+            if (reward.cardShards > 0) {
+                val targetCard = "c_heroic_rage"
+                newCardShards[targetCard] = (newCardShards[targetCard] ?: 0) + reward.cardShards
+            }
+            val newHeroShards = state.heroShards.toMutableMap()
+            if (reward.heroShards > 0) {
+                val targetHero = state.selectedHeroId
+                newHeroShards[targetHero] = (newHeroShards[targetHero] ?: 0) + reward.heroShards
+            }
+
+            state.copy(
+                gold = newGold,
+                mythGems = newGems,
+                cardShards = newCardShards,
+                heroShards = newHeroShards,
+                playerProgress = state.playerProgress.copy(claimedLevelRewards = newClaimed),
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return Result.success(reward)
     }
 
     /**
@@ -825,6 +965,10 @@ class PlayerEconomyRepository(
             saveToPersistence()
         }
 
+        if (_economyState.value.playerAllianceId != null) {
+            addAllianceContribution(battlesWon = 0, damageDealt = 0L, campaignClears = 0, questsCompleted = 1)
+        }
+
         return Result.success(reward)
     }
 
@@ -856,7 +1000,7 @@ class PlayerEconomyRepository(
     }
 
     /**
-     * Claims the daily login reward atomically (Phase 7D Section 16, 17).
+     * Claims the daily login reward atomically (Phase 7D Section 16, 17 & Phase 8 Section 5).
      */
     @Synchronized
     fun claimDailyLoginReward(currentDateOverride: String? = null): Result<DailyLoginReward> {
@@ -871,6 +1015,11 @@ class PlayerEconomyRepository(
 
         val preservedDeck = state.activeDeck.createDefensiveCopy()
         val nextDay = if (day >= 7) 1 else day + 1
+
+        val isConsecutive = MythosDateUtil.isConsecutiveDay(state.lastLoginRewardDate, today)
+        val curStreak = state.playerProgress.loginStreak
+        val newStreak = if (isConsecutive) curStreak + 1 else 1
+        val newHighestStreak = maxOf(state.playerProgress.highestLoginStreak, newStreak)
 
         _economyState.update { current ->
             val newGold = current.gold + reward.gold
@@ -907,11 +1056,431 @@ class PlayerEconomyRepository(
                 ownedCardCounts = newCardCounts,
                 loginRewardDay = nextDay,
                 lastLoginRewardDate = today,
-                activeDeck = preservedDeck
+                activeDeck = preservedDeck,
+                playerProgress = current.playerProgress.copy(
+                    loginStreak = newStreak,
+                    highestLoginStreak = newHighestStreak
+                )
             )
         }
         saveToPersistence()
         return Result.success(reward)
+    }
+
+    private fun createLocalPlayerMember(role: AllianceRole): AllianceMember {
+        val state = _economyState.value
+        val p = state.playerProgress
+        val hero = HeroCatalog.findHero(state.selectedHeroId) ?: HeroCatalog.HERCULES
+        val scaled = HeroProgressionConfig.getScaledStats(hero, state.heroProgression[state.selectedHeroId] ?: 1)
+        val power = (scaled.hp / 10) + (scaled.attack / 2) + (scaled.defense / 2)
+        return AllianceMember(
+            playerId = "player_local",
+            name = "Champion",
+            playerLevel = p.playerLevel,
+            heroId = state.selectedHeroId,
+            combatPower = power,
+            role = role,
+            joinedDate = MythosDateUtil.getCurrentLocalDate(),
+            battlesWon = p.totalVictories,
+            damageDealt = p.totalDamageDealt,
+            campaignClears = p.totalCampaignStagesCleared,
+            questsCompleted = 0,
+            contributionScore = (p.totalVictories * 50L) + (p.totalCampaignStagesCleared * 100L)
+        )
+    }
+
+    /**
+     * Creates a new Alliance (Phase 8 Section 1).
+     * Costs 5,000 Gold. Caller becomes LEADER.
+     */
+    @Synchronized
+    fun createAlliance(name: String, emblem: String, description: String): Result<Alliance> {
+        val current = _economyState.value
+        if (current.playerAllianceId != null) {
+            return Result.failure(IllegalStateException("Already in an Alliance. Leave your current Alliance first."))
+        }
+        val trimmedName = name.trim()
+        if (trimmedName.isBlank()) {
+            return Result.failure(IllegalArgumentException("Alliance name cannot be blank."))
+        }
+        if (current.gold < Alliance.CREATE_GOLD_COST) {
+            return Result.failure(IllegalStateException("Insufficient Gold. Need ${Alliance.CREATE_GOLD_COST} Gold to establish an Alliance."))
+        }
+
+        val newAlliance = Alliance(
+            allianceId = "alliance_" + java.util.UUID.randomUUID().toString().take(8),
+            name = trimmedName,
+            emblem = emblem.ifBlank { "emblem_gold_eagle" },
+            description = description.ifBlank { "Warriors of Mount Olympus united in divine glory." },
+            level = 1,
+            xp = 0,
+            createdDate = MythosDateUtil.getCurrentLocalDate(),
+            members = listOf(createLocalPlayerMember(AllianceRole.LEADER))
+        )
+
+        _economyState.update { state ->
+            state.copy(
+                gold = state.gold - Alliance.CREATE_GOLD_COST,
+                alliances = state.alliances + newAlliance,
+                playerAllianceId = newAlliance.allianceId,
+                playerProgress = state.playerProgress.copy(
+                    allianceId = newAlliance.allianceId,
+                    allianceName = newAlliance.name,
+                    allianceRole = AllianceRole.LEADER.title
+                ),
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return Result.success(newAlliance)
+    }
+
+    /**
+     * Joins an existing Alliance (Phase 8 Section 1).
+     * Enforces maximum 20 members rule.
+     */
+    @Synchronized
+    fun joinAlliance(allianceId: String): Result<Alliance> {
+        val current = _economyState.value
+        if (current.playerAllianceId != null) {
+            return Result.failure(IllegalStateException("Already in an Alliance. Leave your current Alliance first."))
+        }
+        val targetAlliance = current.alliances.find { it.allianceId == allianceId }
+            ?: return Result.failure(IllegalArgumentException("Alliance not found."))
+
+        if (targetAlliance.isFull) {
+            return Result.failure(IllegalStateException("Alliance is full (maximum ${Alliance.MAX_MEMBERS} members)."))
+        }
+
+        val localMember = createLocalPlayerMember(AllianceRole.MEMBER)
+        val updatedMembers = targetAlliance.members + localMember
+        val updatedAlliance = targetAlliance.copy(members = updatedMembers)
+
+        _economyState.update { state ->
+            val updatedList = state.alliances.map { if (it.allianceId == allianceId) updatedAlliance else it }
+            state.copy(
+                alliances = updatedList,
+                playerAllianceId = allianceId,
+                playerProgress = state.playerProgress.copy(
+                    allianceId = allianceId,
+                    allianceName = targetAlliance.name,
+                    allianceRole = AllianceRole.MEMBER.title
+                ),
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return Result.success(updatedAlliance)
+    }
+
+    /**
+     * Leaves current Alliance (Phase 8 Section 1).
+     * If player is LEADER and other members exist, passes leadership to next senior member.
+     */
+    @Synchronized
+    fun leaveAlliance(): Result<Unit> {
+        val current = _economyState.value
+        val allianceId = current.playerAllianceId
+            ?: return Result.failure(IllegalStateException("Not currently in an Alliance."))
+
+        val alliance = current.alliances.find { it.allianceId == allianceId }
+            ?: return Result.failure(IllegalArgumentException("Alliance not found."))
+
+        val isLeader = current.isLeaderOfAlliance
+        val remainingMembers = alliance.members.filter { it.playerId != "player_local" }
+
+        val updatedAlliances = if (remainingMembers.isEmpty()) {
+            current.alliances.filter { it.allianceId != allianceId }
+        } else {
+            val finalMembers = if (isLeader) {
+                val newLeader = remainingMembers.maxByOrNull { it.contributionScore } ?: remainingMembers.first()
+                remainingMembers.map {
+                    if (it.playerId == newLeader.playerId) it.copy(role = AllianceRole.LEADER) else it
+                }
+            } else {
+                remainingMembers
+            }
+            current.alliances.map {
+                if (it.allianceId == allianceId) it.copy(members = finalMembers) else it
+            }
+        }
+
+        _economyState.update { state ->
+            state.copy(
+                alliances = updatedAlliances,
+                playerAllianceId = null,
+                playerProgress = state.playerProgress.copy(
+                    allianceId = null,
+                    allianceName = null,
+                    allianceRole = null,
+                    allianceContribution = 0L
+                ),
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return Result.success(Unit)
+    }
+
+    /**
+     * Promotes an Alliance member to Officer (Leader only).
+     */
+    @Synchronized
+    fun promoteMember(targetPlayerId: String): Result<Alliance> {
+        val current = _economyState.value
+        val alliance = current.playerAlliance
+            ?: return Result.failure(IllegalStateException("Not currently in an Alliance."))
+
+        if (!current.isLeaderOfAlliance) {
+            return Result.failure(IllegalStateException("Only the Alliance Leader can promote members."))
+        }
+
+        val target = alliance.members.find { it.playerId == targetPlayerId }
+            ?: return Result.failure(IllegalArgumentException("Member not found."))
+
+        if (target.role == AllianceRole.LEADER) {
+            return Result.failure(IllegalStateException("Leader cannot be promoted."))
+        }
+        if (target.role == AllianceRole.OFFICER) {
+            return Result.failure(IllegalStateException("Member is already an Officer."))
+        }
+
+        val updatedMembers = alliance.members.map {
+            if (it.playerId == targetPlayerId) it.copy(role = AllianceRole.OFFICER) else it
+        }
+        val updatedAlliance = alliance.copy(members = updatedMembers)
+
+        _economyState.update { state ->
+            state.copy(
+                alliances = state.alliances.map { if (it.allianceId == alliance.allianceId) updatedAlliance else it },
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return Result.success(updatedAlliance)
+    }
+
+    /**
+     * Demotes an Alliance Officer to Member (Leader only).
+     */
+    @Synchronized
+    fun demoteMember(targetPlayerId: String): Result<Alliance> {
+        val current = _economyState.value
+        val alliance = current.playerAlliance
+            ?: return Result.failure(IllegalStateException("Not currently in an Alliance."))
+
+        if (!current.isLeaderOfAlliance) {
+            return Result.failure(IllegalStateException("Only the Alliance Leader can demote officers."))
+        }
+
+        val target = alliance.members.find { it.playerId == targetPlayerId }
+            ?: return Result.failure(IllegalArgumentException("Member not found."))
+
+        if (target.role != AllianceRole.OFFICER) {
+            return Result.failure(IllegalStateException("Member is not an Officer."))
+        }
+
+        val updatedMembers = alliance.members.map {
+            if (it.playerId == targetPlayerId) it.copy(role = AllianceRole.MEMBER) else it
+        }
+        val updatedAlliance = alliance.copy(members = updatedMembers)
+
+        _economyState.update { state ->
+            state.copy(
+                alliances = state.alliances.map { if (it.allianceId == alliance.allianceId) updatedAlliance else it },
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return Result.success(updatedAlliance)
+    }
+
+    /**
+     * Transfers Leadership to another member (Leader only).
+     */
+    @Synchronized
+    fun transferLeadership(newLeaderPlayerId: String): Result<Alliance> {
+        val current = _economyState.value
+        val alliance = current.playerAlliance
+            ?: return Result.failure(IllegalStateException("Not currently in an Alliance."))
+
+        if (!current.isLeaderOfAlliance) {
+            return Result.failure(IllegalStateException("Only the Alliance Leader can transfer leadership."))
+        }
+
+        if (newLeaderPlayerId == "player_local") {
+            return Result.failure(IllegalArgumentException("You are already the leader."))
+        }
+
+        val target = alliance.members.find { it.playerId == newLeaderPlayerId }
+            ?: return Result.failure(IllegalArgumentException("Target member not found."))
+
+        val updatedMembers = alliance.members.map {
+            when (it.playerId) {
+                newLeaderPlayerId -> it.copy(role = AllianceRole.LEADER)
+                "player_local" -> it.copy(role = AllianceRole.OFFICER)
+                else -> it
+            }
+        }
+        val updatedAlliance = alliance.copy(members = updatedMembers)
+
+        _economyState.update { state ->
+            state.copy(
+                alliances = state.alliances.map { if (it.allianceId == alliance.allianceId) updatedAlliance else it },
+                playerProgress = state.playerProgress.copy(allianceRole = AllianceRole.OFFICER.title),
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return Result.success(updatedAlliance)
+    }
+
+    /**
+     * Kicks a member from the Alliance (Leader or Officer).
+     */
+    @Synchronized
+    fun kickMember(targetPlayerId: String): Result<Alliance> {
+        val current = _economyState.value
+        val alliance = current.playerAlliance
+            ?: return Result.failure(IllegalStateException("Not currently in an Alliance."))
+
+        val callerRecord = current.playerMemberRecord
+            ?: return Result.failure(IllegalStateException("Caller is not a member."))
+
+        if (!callerRecord.role.canKick) {
+            return Result.failure(IllegalStateException("You do not have permission to kick members."))
+        }
+
+        val target = alliance.members.find { it.playerId == targetPlayerId }
+            ?: return Result.failure(IllegalArgumentException("Target member not found."))
+
+        if (target.role == AllianceRole.LEADER) {
+            return Result.failure(IllegalStateException("Cannot kick the Alliance Leader."))
+        }
+        if (callerRecord.role == AllianceRole.OFFICER && target.role == AllianceRole.OFFICER) {
+            return Result.failure(IllegalStateException("Officers cannot kick other officers."))
+        }
+
+        val updatedMembers = alliance.members.filter { it.playerId != targetPlayerId }
+        val updatedAlliance = alliance.copy(members = updatedMembers)
+
+        _economyState.update { state ->
+            state.copy(
+                alliances = state.alliances.map { if (it.allianceId == alliance.allianceId) updatedAlliance else it },
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return Result.success(updatedAlliance)
+    }
+
+    /**
+     * Adds Alliance XP and handles level progression (Phase 8 Section 3).
+     */
+    @Synchronized
+    fun addAllianceXp(xpGained: Int) {
+        if (xpGained <= 0) return
+        val current = _economyState.value
+        val allianceId = current.playerAllianceId ?: return
+        val alliance = current.playerAlliance ?: return
+
+        var curLevel = alliance.level
+        var curXp = alliance.xp + xpGained
+
+        while (curLevel < AllianceProgressionConfig.MAX_ALLIANCE_LEVEL) {
+            val req = AllianceProgressionConfig.getXpRequiredForNextLevel(curLevel)
+            if (curXp >= req && req > 0) {
+                curXp -= req
+                curLevel += 1
+            } else {
+                break
+            }
+        }
+
+        val updatedAlliance = alliance.copy(level = curLevel, xp = curXp)
+        _economyState.update { state ->
+            state.copy(
+                alliances = state.alliances.map { if (it.allianceId == allianceId) updatedAlliance else it },
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+    }
+
+    /**
+     * Records member contribution and grants Alliance XP (Phase 8 Section 4).
+     */
+    @Synchronized
+    fun addAllianceContribution(battlesWon: Int = 0, damageDealt: Long = 0L, campaignClears: Int = 0, questsCompleted: Int = 0) {
+        val current = _economyState.value
+        val allianceId = current.playerAllianceId ?: return
+        val alliance = current.playerAlliance ?: return
+
+        val addedScore = (battlesWon * 50L) + (campaignClears * 100L) + (questsCompleted * 30L) + (damageDealt / 200L)
+
+        val updatedMembers = alliance.members.map { m ->
+            if (m.playerId == "player_local") {
+                m.copy(
+                    battlesWon = m.battlesWon + battlesWon,
+                    damageDealt = m.damageDealt + damageDealt,
+                    campaignClears = m.campaignClears + campaignClears,
+                    questsCompleted = m.questsCompleted + questsCompleted,
+                    contributionScore = m.contributionScore + addedScore
+                )
+            } else m
+        }
+
+        val updatedAlliance = alliance.copy(members = updatedMembers)
+        val curContrib = current.playerProgress.allianceContribution + addedScore
+
+        _economyState.update { state ->
+            state.copy(
+                alliances = state.alliances.map { if (it.allianceId == allianceId) updatedAlliance else it },
+                playerProgress = state.playerProgress.copy(allianceContribution = curContrib),
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+
+        val allianceXpToAdd = (battlesWon * 50) + (campaignClears * 100) + (questsCompleted * 30)
+        if (allianceXpToAdd > 0) {
+            addAllianceXp(allianceXpToAdd)
+        } else {
+            saveToPersistence()
+        }
+    }
+
+    fun setEventActiveForTesting(eventId: String, active: Boolean) {
+        _economyState.update { current ->
+            val updated = current.activeEvents.map {
+                if (it.eventId == eventId) it.copy(isActive = active) else it
+            }
+            current.copy(activeEvents = updated)
+        }
+    }
+
+    fun setAllianceForTesting(alliance: Alliance) {
+        _economyState.update { current ->
+            val updated = current.alliances.filter { it.allianceId != alliance.allianceId } + alliance
+            current.copy(alliances = updated)
+        }
+    }
+
+    fun setPlayerAllianceIdForTesting(id: String?) {
+        _economyState.update { current ->
+            current.copy(
+                playerAllianceId = id,
+                playerProgress = current.playerProgress.copy(allianceId = id)
+            )
+        }
+    }
+
+    fun setLoginStreakForTesting(streak: Int, lastDate: String?) {
+        _economyState.update { current ->
+            current.copy(
+                lastLoginRewardDate = lastDate,
+                playerProgress = current.playerProgress.copy(loginStreak = streak)
+            )
+        }
     }
 
     /**
@@ -985,6 +1554,14 @@ class PlayerEconomyRepository(
                 updateQuestProgress(QuestType.WIN_CAMPAIGN_BATTLE, 1)
             }
         }
+
+        // Accrue Alliance Contribution and XP (Phase 8 Section 3, 4)
+        addAllianceContribution(
+            battlesWon = if (isVictory) 1 else 0,
+            damageDealt = stats.totalDamageDealt.toLong(),
+            campaignClears = if (isVictory && isCampaign) 1 else 0
+        )
+
         saveToPersistence()
     }
 
