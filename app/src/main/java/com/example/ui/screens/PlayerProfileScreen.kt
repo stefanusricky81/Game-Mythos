@@ -55,9 +55,10 @@ fun PlayerProfileScreen(
     }
 
     val highestRarity = remember(economyState.ownedCardIds) {
-        val ownedCards = economyState.ownedCardIds.mapNotNull { CardCatalog.findCard(it) }
+        val ownedCards = economyState.ownedCardIds.mapNotNull { CardCatalog.findDefinition(it) }
         when {
             ownedCards.any { it.rarity == CardRarity.MYTHIC } -> CardRarity.MYTHIC
+            ownedCards.any { it.rarity == CardRarity.LEGENDARY } -> CardRarity.LEGENDARY
             ownedCards.any { it.rarity == CardRarity.EPIC } -> CardRarity.EPIC
             ownedCards.any { it.rarity == CardRarity.RARE } -> CardRarity.RARE
             ownedCards.any { it.rarity == CardRarity.UNCOMMON } -> CardRarity.UNCOMMON
@@ -296,6 +297,7 @@ fun PlayerProfileScreen(
                         value = highestRarity.label,
                         color = when (highestRarity) {
                             CardRarity.MYTHIC -> MythosTokens.Legendary
+                            CardRarity.LEGENDARY -> MythosTokens.Legendary
                             CardRarity.EPIC -> MythosTokens.Epic
                             CardRarity.RARE -> MythosTokens.DivineBlueLight
                             CardRarity.UNCOMMON -> MythosTokens.Success

@@ -28,7 +28,7 @@ class AllianceAndRetentionSystemTest {
         repository = PlayerEconomyRepository()
         repository.initPersistence(context)
         // Ensure starting gold is sufficient for creation tests
-        repository.addGold(10_000)
+        repository.debugAddGold(10_000)
     }
 
     @Test
@@ -242,7 +242,7 @@ class AllianceAndRetentionSystemTest {
     @Test
     fun test10_loginStreakTracking() {
         repository.checkDailyReset("2026-09-20")
-        repository.setLoginStreakForTesting(4)
+        repository.setLoginStreakForTesting(4, "2026-09-20")
         assertEquals(4, repository.economyState.value.playerProgress.loginStreak)
 
         // Consecutive day advances streak

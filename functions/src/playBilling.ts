@@ -1,5 +1,4 @@
 import { onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
-import { defineSecret } from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
@@ -14,11 +13,12 @@ const REGION = "asia-southeast1";
 // otherwise every purchases.products.get() call below will 404.
 const PACKAGE_NAME = "com.aistudio.mythosbattle.krxwtp";
 
-// Service account key JSON from Play Console > Users and permissions > a service account
-// with "View financial data" + Android Publisher API access, stored as a Firebase secret -
-// never committed to git. Set once via:
-//   firebase functions:secrets:set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
-const GOOGLE_PLAY_SERVICE_ACCOUNT_JSON = defineSecret("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON");
+// Keyless auth to the Play Developer API: the function runs AS this dedicated service
+// account (no JSON key file exists anywhere to leak or lose), and that same account is
+// invited in Play Console > Users and permissions with "View financial data" for Mythos.
+// It also needs the "Cloud Datastore User" role for the Firestore ledger. Google Play
+// Android Developer API must be enabled in the Google Cloud project.
+const RUNTIME_SERVICE_ACCOUNT = "mythos-play-verifier@mythos-game-a8b8c.iam.gserviceaccount.com";
 
 const PURCHASES_COLLECTION = "purchases";
 
@@ -60,7 +60,7 @@ interface VerifyPurchaseResponse {
 export const verifyPlayPurchase = onCall(
   {
     region: REGION,
-    secrets: [GOOGLE_PLAY_SERVICE_ACCOUNT_JSON],
+    serviceAccount: RUNTIME_SERVICE_ACCOUNT,
     enforceAppCheck: true,
   },
   async (request: CallableRequest<{ productId: string; purchaseToken: string }>): Promise<VerifyPurchaseResponse> => {
@@ -81,9 +81,8 @@ export const verifyPlayPurchase = onCall(
     let purchaseState: number | null | undefined;
     let googleOrderId: string | null | undefined;
     try {
-      const credentials = JSON.parse(GOOGLE_PLAY_SERVICE_ACCOUNT_JSON.value());
+      // Application Default Credentials = the runtime service account above (no key file).
       const auth = new google.auth.GoogleAuth({
-        credentials,
         scopes: ["https://www.googleapis.com/auth/androidpublisher"],
       });
       const androidpublisher = google.androidpublisher({ version: "v3", auth });

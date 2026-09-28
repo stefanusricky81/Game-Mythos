@@ -86,10 +86,6 @@ jest.mock("firebase-admin", () => ({
   }),
 }));
 
-jest.mock("firebase-functions/params", () => ({
-  defineSecret: () => ({ value: () => JSON.stringify({ fake: "service-account" }) }),
-}));
-
 let mockPurchaseState: number | null | undefined = 0;
 let mockOrderId: string | null = "GPA.1234-5678";
 let mockShouldThrow = false;

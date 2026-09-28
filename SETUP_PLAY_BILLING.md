@@ -27,55 +27,40 @@ it cannot be changed after the first release.
 Once confirmed, this same string must appear in **`functions/src/playBilling.ts`**
 (`PACKAGE_NAME` constant) — update it there too if it differs.
 
-## 1. Create the Firebase project
+## 1. Firebase project — DONE (project `mythos-game-a8b8c`)
 
-1. https://console.firebase.google.com → Add project (or use an existing one).
-2. Add an Android app to it, using the exact package name from step 0.
-3. Download `google-services.json` and place it at `app/google-services.json`
-   (already gitignored — never commit it).
-4. In the Firebase console, enable **Cloud Firestore** (Production mode, any region close
-   to your players, e.g. `asia-southeast1`/Jakarta).
+Created: project, Android app, `app/google-services.json` (gitignored), **Anonymous
+Authentication** (leave "Auto clean-up" OFF — it would delete a player's identity, and
+their purchase ownership with it), and Firestore (Standard edition, `asia-southeast1`,
+production rules = deny all client access).
 
-## 2. Set up App Check (Play Integrity)
+## 2. App Check (Play Integrity) — DONE
 
-MYTHOS has no login system, so there's no Firebase Auth user to protect the
-`verifyPlayPurchase` function with. Instead it's protected by **App Check**, which proves
-the call came from a genuine, unmodified install of your app.
+The Android app is registered with the Play Integrity provider using the **app signing
+key** SHA-256 from Play Console (Test and release → App integrity). `MythosApplication.kt`
+installs the provider at startup. For debug builds, register the debug token printed in
+Logcat under App Check → Manage debug tokens.
 
-1. Firebase console → App Check → Apps → register your Android app → provider **Play
-   Integrity**.
-2. You do NOT need to do anything else for release builds — `MythosApplication.kt`
-   installs the Play Integrity provider automatically.
-3. For local/debug testing: build and run a debug build once, then find the debug token
-   printed in Logcat (search for "AppCheck"). Add it in Firebase console → App Check →
-   your app → Manage debug tokens.
+## 3. Play Developer API access (keyless) — DONE
 
-## 3. Create a Play Developer API service account
+The Cloud Function runs AS the service account
+`mythos-play-verifier@mythos-game-a8b8c.iam.gserviceaccount.com` (see
+`RUNTIME_SERVICE_ACCOUNT` in `functions/src/playBilling.ts`). **No JSON key file exists**,
+so there is nothing secret to store, lose or leak.
 
-This lets the Cloud Function ask Google "was this purchase token really paid for?".
+- Google Cloud: "Google Play Android Developer API" enabled; the service account has the
+  single role **Cloud Datastore User** (for the Firestore ledger).
+- Play Console → Users and permissions: the same account is invited for **Mythos only**
+  with View app information, View app quality information and **View financial data**
+  (read-only; deliberately NOT "Manage orders and subscriptions").
 
-1. Play Console → Setup → API access → Create new service account (this opens Google Cloud
-   Console for you).
-2. In Google Cloud Console, create the service account, grant it a key (JSON), download it.
-3. Back in Play Console → API access, grant that service account **at least**:
-   - "View app information (read-only)"
-   - "View financial data"
-   (Monetization/order permissions may also be needed depending on Play Console's current
-   permission model — grant the least that lets `purchases.products.get` succeed; Play
-   Console will tell you if something's missing when you test.)
-4. Keep the downloaded JSON key file safe and **never commit it to git**.
+## 4. (removed)
 
-## 4. Store the service account key as a Firebase secret
-
-From the `functions/` directory (after `firebase login` and `firebase use <project-id>`):
-
-```bash
-firebase functions:secrets:set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
-```
-
-When prompted, paste the **entire contents** of the service account JSON file.
+The old "store a JSON key as a secret" step is obsolete — see step 3.
 
 ## 5. Deploy
+
+Cloud Functions require the **Blaze** (pay-as-you-go) plan on the Firebase project. Then:
 
 ```bash
 cd functions
@@ -85,8 +70,7 @@ cd ..
 firebase deploy --only functions,firestore:rules
 ```
 
-Update `.firebaserc` first with your real project id (replace
-`REPLACE_WITH_YOUR_FIREBASE_PROJECT_ID`).
+`.firebaserc` already points at `mythos-game-a8b8c`.
 
 ## 6. Create the in-app products in Play Console
 
