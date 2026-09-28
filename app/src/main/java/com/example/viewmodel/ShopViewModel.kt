@@ -38,6 +38,10 @@ class ShopViewModel(
 
     val economyState: StateFlow<PlayerEconomyState> = repository.economyState
 
+    // productId -> Play's own live formattedPrice. Empty in debug/mock builds and until the
+    // first successful refresh; ShopScreen falls back to catalog priceDisplay when absent.
+    val livePrices: StateFlow<Map<String, String>> = repository.livePrices
+
     private val _uiState = MutableStateFlow(ShopUiState())
     val uiState: StateFlow<ShopUiState> = _uiState.asStateFlow()
 

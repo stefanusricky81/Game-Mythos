@@ -62,6 +62,7 @@ fun ShopScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val economyState by viewModel.economyState.collectAsState()
+    val livePrices by viewModel.livePrices.collectAsState()
     var showDebugPanel by remember { mutableStateOf(false) }
 
     val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
@@ -201,18 +202,26 @@ fun ShopScreen(
             ) {
                 when (uiState.selectedTab) {
                     ShopTab.FEATURED -> FeaturedTab(
-                        bundles = MonetizationCatalog.BUNDLES,
+                        // Live Play price where available; MonetizationCatalog's hand-written
+                        // Rp... string is a development/offline fallback, not the production
+                        // source of truth for what the player is charged.
+                        bundles = MonetizationCatalog.BUNDLES.map {
+                            it.copy(priceDisplay = resolvePriceDisplay(livePrices, it.bundleId, it.priceDisplay))
+                        },
                         ownedBundleIds = economyState.ownedBundleIds,
                         onBuyBundle = { viewModel.buyBundle(it) },
                         onNavigateToGems = { viewModel.selectTab(ShopTab.GEMS) }
                     )
                     ShopTab.GEMS -> GemsTab(
-                        products = MonetizationCatalog.GEM_PRODUCTS,
+                        products = MonetizationCatalog.GEM_PRODUCTS.map {
+                            it.copy(priceDisplay = resolvePriceDisplay(livePrices, it.productId, it.priceDisplay))
+                        },
                         onBuyProduct = { viewModel.buyGemProduct(it) }
                     )
                     ShopTab.CARDS -> CardsTab(
                         cards = MonetizationCatalog.getDirectCardOffers(),
                         ownedCardIds = economyState.ownedCardIds,
+                        livePrices = livePrices,
                         onBuyCard = { viewModel.buyDirectCard(it) }
                     )
                     ShopTab.SUMMON -> SummonTab(
@@ -224,7 +233,13 @@ fun ShopScreen(
                         onTopUpGems = { viewModel.selectTab(ShopTab.GEMS) }
                     )
                     ShopTab.COSMETICS -> CosmeticsTab(
-                        cosmetics = MonetizationCatalog.COSMETICS,
+                        cosmetics = MonetizationCatalog.COSMETICS.map { cosmetic ->
+                            // Gem-priced cosmetics never touch real-money billing/live prices.
+                            if (cosmetic.priceGems != null) cosmetic
+                            else cosmetic.copy(
+                                priceDisplay = resolvePriceDisplay(livePrices, cosmetic.id, cosmetic.priceDisplay)
+                            )
+                        },
                         ownedCosmeticIds = economyState.ownedCosmeticIds,
                         gemBalance = economyState.mythGems,
                         onBuyCosmetic = { viewModel.buyCosmetic(it) }
@@ -883,6 +898,7 @@ private fun GemsTab(
 private fun CardsTab(
     cards: List<com.example.data.Card>,
     ownedCardIds: Set<String>,
+    livePrices: Map<String, String> = emptyMap(),
     onBuyCard: (com.example.data.Card) -> Unit
 ) {
     LazyColumn(
@@ -927,6 +943,7 @@ private fun CardsTab(
             PremiumCardOffer(
                 card = card,
                 isOwned = isOwned,
+                livePriceDisplay = livePrices[card.id],
                 onBuyClick = { onBuyCard(card) }
             )
         }

@@ -47,6 +47,8 @@ class MainActivity : ComponentActivity() {
 
         // Initialize local persistent collection & economy (Phase 6A Requirement #12)
         PlayerEconomyRepository.instance.initPersistence(this)
+        // Wire up real Google Play Billing (release builds) / keep mock billing (debug builds)
+        PlayerEconomyRepository.instance.configureBilling(this)
 
         soundManager = SoundManager(this)
 
@@ -189,6 +191,9 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         soundManager.release()
+        if (isFinishing) {
+            PlayerEconomyRepository.instance.endBillingConnection()
+        }
     }
 }
 

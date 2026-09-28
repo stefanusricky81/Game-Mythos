@@ -1,0 +1,14 @@
+rules_version = '2';
+
+// The app has no client-side Firestore access at all - the game's local economy lives on
+// device (SharedPreferences via PlayerEconomyRepository), and the server-side "purchases"
+// collection (source of truth for payment-derived entitlements) is only ever read/written by
+// the verifyPlayPurchase / getPlayerEntitlements Cloud Functions via the Admin SDK, which
+// bypasses these rules entirely. Deny everything from client SDKs as an explicit backstop.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -34,10 +34,16 @@ fun PremiumCardOffer(
     card: Card,
     isOwned: Boolean,
     onBuyClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // Live Play price when available; falls back to the catalog's hand-written price (dev/
+    // offline builds, or before the first successful GooglePlayBillingProvider price refresh).
+    livePriceDisplay: String? = null
 ) {
     val rarityColor = MythosTokens.getRarityColor(card.rarity)
-    val priceDisplay = DirectCardPricing.getPriceDisplay(card.rarity) ?: "Not for Sale"
+    // livePriceDisplay is already resolved by the caller (ShopScreen -> CardsTab); prefer it over
+    // the catalog fallback exactly like resolvePriceDisplay() does for GemProduct/PremiumBundle/
+    // CosmeticItem, just without needing a whole map for a single already-looked-up value.
+    val priceDisplay = livePriceDisplay ?: DirectCardPricing.getPriceDisplay(card.rarity) ?: "Not for Sale"
 
     Card(
         modifier = modifier

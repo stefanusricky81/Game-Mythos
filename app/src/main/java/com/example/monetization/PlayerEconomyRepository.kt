@@ -1,13 +1,21 @@
 package com.example.monetization
 
+import android.app.Activity
+import androidx.activity.ComponentActivity
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.MythosConfig
 import com.example.data.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.lang.ref.WeakReference
 
 /**
  * Player Economy & Inventory State (Requirements #14, #16, #20).
@@ -127,7 +135,7 @@ data class PlayerEconomyState(
  * - Idempotency Enforcement: Prevents duplicate rewards or double-processing purchaseIds.
  */
 class PlayerEconomyRepository(
-    private val billingProvider: BillingProvider = MockBillingProvider()
+    initialBillingProvider: BillingProvider = MockBillingProvider()
 ) {
     companion object {
         val instance by lazy { PlayerEconomyRepository() }
@@ -135,10 +143,63 @@ class PlayerEconomyRepository(
     private val _economyState = MutableStateFlow(PlayerEconomyState())
     val economyState: StateFlow<PlayerEconomyState> = _economyState.asStateFlow()
 
+    // productId -> Play's own formattedPrice, e.g. "Rp9.900". Empty until GooglePlayBillingProvider
+    // finishes its first refreshLivePrices() call; the shop UI falls back to MonetizationCatalog's
+    // hardcoded priceDisplay for any productId missing from this map (dev/offline/debug builds
+    // never populate it at all, since MockBillingProvider never calls onLivePricesUpdated).
+    private val _livePrices = MutableStateFlow<Map<String, String>>(emptyMap())
+    val livePrices: StateFlow<Map<String, String>> = _livePrices.asStateFlow()
+
     // Idempotency tracking
     private val processedPurchaseIds = mutableSetOf<String>()
 
     private var sharedPreferences: SharedPreferences? = null
+
+    private var billingProvider: BillingProvider = initialBillingProvider
+    private var currentActivityRef: WeakReference<Activity>? = null
+    private var billingConfigured = false
+    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * Wires up real Google Play Billing for release builds (debug builds keep using
+     * [MockBillingProvider] so the shop can be tested without spending real money - see
+     * MythosConfig.DEBUG_BUILD). Safe to call every onCreate: the Activity reference is
+     * refreshed each time (needed after rotation/recreation), but the BillingClient
+     * connection itself is only opened once.
+     */
+    fun configureBilling(activity: ComponentActivity) {
+        currentActivityRef = WeakReference(activity)
+        if (billingConfigured) return
+        billingConfigured = true
+        if (MythosConfig.DEBUG_BUILD) return
+
+        // Per the "First launch -> Anonymous Auth -> stable UID" identity flow: establish the
+        // player's identity as early as possible rather than lazily on first purchase, so it's
+        // normally already warm by the time the shop is opened. FirebasePurchaseVerifier calls
+        // ensureSignedIn() again regardless, so this is a latency optimization, not a
+        // correctness requirement.
+        repoScope.launch {
+            try {
+                PlayerIdentity.ensureSignedIn()
+            } catch (e: Exception) {
+                // Non-fatal here: a purchase attempt will retry sign-in and surface a clear
+                // error to the player if it keeps failing.
+            }
+        }
+
+        val provider = GooglePlayBillingProvider(
+            appContext = activity.applicationContext,
+            activityProvider = { currentActivityRef?.get() },
+            onExternalGrant = { record, items -> grantEntitlements(record, items) },
+            onLivePricesUpdated = { prices -> _livePrices.value = prices }
+        )
+        billingProvider = provider
+        provider.connect()
+    }
+
+    fun endBillingConnection() {
+        (billingProvider as? GooglePlayBillingProvider)?.disconnect()
+    }
 
     /**
      * Initializes persistence with Android context.
@@ -168,6 +229,12 @@ class PlayerEconomyRepository(
         if (!prefs.contains("saved_gold")) return
 
         try {
+            // Idempotency ledger for grantEntitlements() (see that function). Loaded before
+            // anything else touches processedPurchaseIds so a reconciliation pass that runs
+            // during app startup (GooglePlayBillingProvider.connect()) never re-grants a
+            // purchase this device already applied in a previous session.
+            processedPurchaseIds.addAll(prefs.getStringSet("saved_processed_purchase_ids", emptySet()) ?: emptySet())
+
             val savedGold = prefs.getInt("saved_gold", 25_000)
             val savedGems = prefs.getInt("saved_gems", 500)
             val savedOwnedCards = prefs.getStringSet("saved_owned_cards", null)
@@ -427,6 +494,10 @@ class PlayerEconomyRepository(
                 .putString("saved_daily_quest_date", current.dailyQuestDate)
                 .putInt("saved_login_reward_day", current.loginRewardDay)
                 .putString("saved_last_login_reward_date", current.lastLoginRewardDate)
+                // Idempotency ledger for grantEntitlements() - see PRODUCTION BLOCKER fix notes
+                // there. Written on every save (not just after a purchase) so it's never stale
+                // relative to whatever else this call is persisting.
+                .putStringSet("saved_processed_purchase_ids", processedPurchaseIds.toSet())
                 .commit()
         } catch (e: Exception) {
             // Graceful error handling
@@ -439,6 +510,16 @@ class PlayerEconomyRepository(
     /**
      * Centralized Entitlement Granting (Requirements #14, #21 & #26).
      * Automatically converts duplicate card grants to card shards!
+     *
+     * This is the ONE place that decides whether a given purchaseId actually mutates local
+     * state, and it's the authoritative guard against double-granting a real-money purchase -
+     * NOT the server's CREDITED_NOW/ALREADY_CREDITED status (see GooglePlayBillingProvider,
+     * which deliberately calls this for both outcomes). [processedPurchaseIds] is persisted
+     * (loaded in loadFromPersistence(), written in saveToPersistence()) specifically so this
+     * check survives an app restart - it used to be in-memory only, which was the root cause of
+     * a real double-grant bug: a purchase already granted and saved to SharedPreferences could
+     * be granted AGAIN if the app restarted before consumePurchase() finished and
+     * reconcileUnconsumedPurchases() re-verified the same still-unconsumed token.
      */
     @Synchronized
     fun grantEntitlements(record: PurchaseRecord, items: List<BundleItem>): Boolean {

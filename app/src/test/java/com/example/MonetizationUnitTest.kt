@@ -116,6 +116,26 @@ class MonetizationUnitTest {
         assertEquals(30, ShardConversion.getShardsForDuplicate(CardRarity.MYTHIC))
     }
 
+    // Scenario 17: live price fallback.
+    @Test
+    fun testResolvePriceDisplayPrefersLivePriceOverCatalog() {
+        val live = mapOf("gem_starter" to "Rp10.000") // e.g. after a Play Console price change
+        assertEquals(
+            "Live Play price must win when present",
+            "Rp10.000",
+            resolvePriceDisplay(live, "gem_starter", "Rp9.900")
+        )
+    }
+
+    @Test
+    fun testResolvePriceDisplayFallsBackToCatalogWhenLivePriceMissing() {
+        assertEquals(
+            "Catalog price must be used when no live price has been fetched yet (debug/offline)",
+            "Rp9.900",
+            resolvePriceDisplay(emptyMap(), "gem_starter", "Rp9.900")
+        )
+    }
+
     @Test
     fun testHerculesLegendaryHeroBundleEntitlements() {
         val herculesBundle = MonetizationCatalog.BUNDLES.find { it.bundleId == "bundle_legendary_hercules" }

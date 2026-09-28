@@ -198,23 +198,6 @@ class MockBillingProvider : BillingProvider {
     }
 }
 
-/**
- * Future Google Play Billing Integration Stub (Requirement #27, #28).
- * Ready to be connected to com.android.billingclient.api when backend token verification is live.
- */
-class GooglePlayBillingProviderStub : BillingProvider {
-    override suspend fun initiatePurchase(
-        productId: String,
-        productType: String,
-        priceDisplay: String,
-        grantedItems: List<BundleItem>,
-        simulationMode: MockBillingResult
-    ): PurchaseResult {
-        // Will delegate to BillingClient.launchBillingFlow(activity, billingFlowParams)
-        throw UnsupportedOperationException("Google Play Billing requires backend token verification server.")
-    }
-
-    override suspend fun restorePurchases(): List<PurchaseRecord> = emptyList()
-    override suspend fun acknowledgePurchase(purchaseId: String): Boolean = true
-    override suspend fun consumePurchase(purchaseId: String): Boolean = true
-}
+// The real Google Play Billing integration this stub used to anticipate now lives in
+// GooglePlayBillingProvider.kt, backed by server-side verification in
+// functions/src/playBilling.ts (see SETUP_PLAY_BILLING.md to finish wiring it up).
