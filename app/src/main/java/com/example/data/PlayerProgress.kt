@@ -19,7 +19,16 @@ data class PlayerProgress(
     val totalDamageDealt: Long = 0L,
     val totalDamageTaken: Long = 0L,
     val totalCampaignStagesCleared: Int = 0,
-    val claimedLevelRewards: Set<Int> = emptySet()
+    val claimedLevelRewards: Set<Int> = emptySet(),
+    val loginStreak: Int = 1,
+    val highestLoginStreak: Int = 1,
+    val weeklyBattlesWon: Int = 0,
+    val weeklyQuestsCompleted: Int = 0,
+    val allianceId: String? = null,
+    val allianceName: String? = null,
+    val allianceRole: String? = null,
+    val allianceContribution: Long = 0L,
+    val avatarId: String = "avatar_default_hercules"
 ) {
     val xpRequiredForNextLevel: Int
         get() = PlayerProgressionConfig.getXpRequiredForNextLevel(playerLevel)
@@ -253,5 +262,19 @@ object DailyLoginRewardConfig {
 object MythosDateUtil {
     fun getCurrentLocalDate(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    }
+
+    fun isConsecutiveDay(prevDateStr: String?, curDateStr: String): Boolean {
+        if (prevDateStr.isNullOrBlank()) return false
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val prev = sdf.parse(prevDateStr) ?: return false
+            val cur = sdf.parse(curDateStr) ?: return false
+            val diffMs = cur.time - prev.time
+            val diffDays = diffMs / (1000 * 60 * 60 * 24)
+            diffDays == 1L
+        } catch (e: Exception) {
+            false
+        }
     }
 }
