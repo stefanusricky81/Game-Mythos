@@ -25,6 +25,10 @@ class MythosApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // Firebase/App Check only matter for server-side purchase verification. While that is
+        // switched off, don't start Firebase at all (no network calls, nothing to misconfigure).
+        if (!MythosConfig.SERVER_VERIFICATION_ENABLED) return
+
         try {
             Firebase.initialize(this)
 

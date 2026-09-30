@@ -2,6 +2,7 @@ package com.example.monetization
 
 import android.app.Activity
 import android.content.Context
+import com.example.MythosConfig
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingFlowParams
@@ -87,7 +88,7 @@ class GooglePlayBillingProvider(
                         // never made it into local SharedPreferences (e.g. local data loss while
                         // the Firebase Anonymous Auth identity survived - see PlayerIdentity's
                         // documented limitation for what this does NOT cover, namely reinstall).
-                        syncServerEntitlements()
+                        if (MythosConfig.SERVER_VERIFICATION_ENABLED) syncServerEntitlements()
                         // Best-effort: the shop can still show catalog fallback prices if this
                         // fails or hasn't completed yet (see ShopViewModel/ShopScreen).
                         refreshLivePrices()
@@ -190,30 +191,33 @@ class GooglePlayBillingProvider(
         // persisted purchaseId ledger, not by this status - see that function's docs for why
         // gating on "AlreadyCredited => never grant" here would risk a paid-but-never-delivered
         // purchase if THIS device's earlier attempt never got as far as actually granting.
-        when (val outcome = verifier.verify(productId, purchase.purchaseToken)) {
-            is VerificationOutcome.CreditedNow, is VerificationOutcome.AlreadyCredited -> Unit
-            VerificationOutcome.Pending -> return@withLock PurchaseResult.Pending(
-                record = PurchaseRecord(
-                    purchaseId = purchase.orderId ?: purchase.purchaseToken,
-                    productId = productId,
-                    productType = productType,
-                    status = PurchaseStatus.PENDING,
-                    priceDisplay = priceDisplay,
-                    rewardSummary = grantedItems.describeForBilling()
+        // Optional extra layer (see MythosConfig.SERVER_VERIFICATION_ENABLED): without it, the
+        // PURCHASED state Play Billing itself reported above is what we act on. Google has
+        // already taken the payment by the time a purchase reaches PURCHASED.
+        if (MythosConfig.SERVER_VERIFICATION_ENABLED) {
+            when (verifier.verify(productId, purchase.purchaseToken)) {
+                is VerificationOutcome.CreditedNow, is VerificationOutcome.AlreadyCredited -> Unit
+                VerificationOutcome.Pending -> return@withLock PurchaseResult.Pending(
+                    record = PurchaseRecord(
+                        purchaseId = purchase.orderId ?: purchase.purchaseToken,
+                        productId = productId,
+                        productType = productType,
+                        status = PurchaseStatus.PENDING,
+                        priceDisplay = priceDisplay,
+                        rewardSummary = grantedItems.describeForBilling()
+                    )
                 )
-            )
-            VerificationOutcome.Cancelled -> return@withLock PurchaseResult.Cancelled()
-            VerificationOutcome.Invalid -> return@withLock PurchaseResult.Failed(
-                "This purchase could not be verified. If you were charged, contact support " +
-                    "with order ${purchase.orderId ?: "unknown"}."
-            )
-            is VerificationOutcome.Error -> return@withLock PurchaseResult.Failed(
-                "Could not verify your purchase with our server. If you were charged, contact " +
-                    "support with order ${purchase.orderId ?: "unknown"}."
-            )
+                VerificationOutcome.Cancelled -> return@withLock PurchaseResult.Cancelled()
+                VerificationOutcome.Invalid -> return@withLock PurchaseResult.Failed(
+                    "This purchase could not be verified. If you were charged, contact support " +
+                        "with order ${purchase.orderId ?: "unknown"}."
+                )
+                is VerificationOutcome.Error -> return@withLock PurchaseResult.Failed(
+                    "Could not verify your purchase with our server. If you were charged, contact " +
+                        "support with order ${purchase.orderId ?: "unknown"}."
+                )
+            }
         }
-
-        consumeInternal(client, purchase.purchaseToken)
 
         val record = PurchaseRecord(
             purchaseId = purchase.orderId ?: purchase.purchaseToken,
@@ -225,6 +229,16 @@ class GooglePlayBillingProvider(
             acknowledged = true,
             consumed = true
         )
+
+        // GRANT FIRST, THEN CONSUME. The reward is written to SharedPreferences (commit()) before
+        // the purchase is marked consumed on Google's side. If the app dies before the grant, the
+        // purchase is still unconsumed and reconcileUnconsumedPurchases() grants it on next
+        // launch; if it dies after the grant but before consume, the persisted purchaseId ledger
+        // makes the retry a no-op and consume is simply retried. Consuming first (the old order)
+        // could lose a paid purchase in the gap between the two steps. grantEntitlements() is
+        // idempotent, so the caller granting the same record again afterwards changes nothing.
+        onExternalGrant(record, grantedItems)
+        consumeInternal(client, purchase.purchaseToken)
         PurchaseResult.Success(record, grantedItems)
     }
 
@@ -261,11 +275,11 @@ class GooglePlayBillingProvider(
             val productId = purchase.products.firstOrNull() ?: continue
             val entry = BillingCatalog.entryFor(productId) ?: continue
 
-            val outcome = verifier.verify(productId, purchase.purchaseToken)
-            val isCredited = outcome is VerificationOutcome.CreditedNow || outcome is VerificationOutcome.AlreadyCredited
-            if (!isCredited) continue // Pending/Cancelled/Invalid/Error: never grant, try again later
-
-            consumeInternal(client, purchase.purchaseToken)
+            if (MythosConfig.SERVER_VERIFICATION_ENABLED) {
+                val outcome = verifier.verify(productId, purchase.purchaseToken)
+                val isCredited = outcome is VerificationOutcome.CreditedNow || outcome is VerificationOutcome.AlreadyCredited
+                if (!isCredited) continue // Pending/Cancelled/Invalid/Error: never grant, try again later
+            }
 
             val record = PurchaseRecord(
                 purchaseId = purchase.orderId ?: purchase.purchaseToken,
@@ -277,7 +291,9 @@ class GooglePlayBillingProvider(
                 acknowledged = true,
                 consumed = true
             )
+            // Grant (persisted, idempotent) BEFORE consume - see initiatePurchase.
             onExternalGrant(record, entry.grantedItems)
+            consumeInternal(client, purchase.purchaseToken)
             records.add(record)
         }
         return records

@@ -193,12 +193,14 @@ class PlayerEconomyRepository(
         // normally already warm by the time the shop is opened. FirebasePurchaseVerifier calls
         // ensureSignedIn() again regardless, so this is a latency optimization, not a
         // correctness requirement.
-        repoScope.launch {
-            try {
-                PlayerIdentity.ensureSignedIn()
-            } catch (e: Exception) {
-                // Non-fatal here: a purchase attempt will retry sign-in and surface a clear
-                // error to the player if it keeps failing.
+        if (MythosConfig.SERVER_VERIFICATION_ENABLED) {
+            repoScope.launch {
+                try {
+                    PlayerIdentity.ensureSignedIn()
+                } catch (e: Exception) {
+                    // Non-fatal here: a purchase attempt will retry sign-in and surface a clear
+                    // error to the player if it keeps failing.
+                }
             }
         }
 
