@@ -14,7 +14,8 @@ enum class LogType {
     SPELL,
     PASSIVE,
     ULTIMATE,
-    POISON
+    POISON,
+    STATUS
 }
 
 enum class NotificationType {
@@ -46,6 +47,7 @@ data class FloatingCombatText(
     val isPositive: Boolean = false,
     val isUltimate: Boolean = false,
     val isShield: Boolean = false,
+    val damageType: String = "PHYSICAL", // "PHYSICAL", "LIGHTNING", "POISON", "BURN", "TRUE", "DIVINE"
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -100,5 +102,9 @@ data class BattleUiState(
     val isDebugPanelOpen: Boolean = false,
     val isDeckInvalid: Boolean = false,
     val deckValidationResult: DeckValidationResult? = null,
-    val campaignVictoryResult: StageVictoryResult? = null
+    val campaignVictoryResult: StageVictoryResult? = null,
+    val isBossPhase2Active: Boolean = false,
+    val bossPhaseBannerText: String? = null,
+    val activeHeroSynergyText: String? = null,
+    val arenaBattleResultSummary: ArenaBattleResultSummary? = null
 )

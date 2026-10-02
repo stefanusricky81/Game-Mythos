@@ -87,6 +87,9 @@ class BattleViewModel : ViewModel() {
         val initialHand = fullDeck.take(4).map { it.copy() }
         val drawPile = fullDeck.drop(4).map { it.copy() }
 
+        val deckAnalysis = SynergyCatalog.analyzeDeck(fullDeck, heroDef)
+        val activeSynergy = deckAnalysis.activeSynergies.firstOrNull()?.let { "${it.iconSymbol} ${it.name} Active" }
+
         _uiState.value = BattleUiState(
             playerHero = playerHero,
             enemyHero = enemyHero,
@@ -100,7 +103,12 @@ class BattleViewModel : ViewModel() {
             playerHand = initialHand,
             playerDrawPile = drawPile,
             playerDiscardPile = emptyList(),
-            enemyHand = DeckFactory.createEnemyDeck(),
+            enemyHand = if (encounterConfig?.isArenaMatch == true && encounterConfig.arenaOpponent != null) {
+                encounterConfig.arenaOpponent.deckCardIds.map { CardCatalog.getCard(it) }
+            } else {
+                DeckFactory.createEnemyDeck()
+            },
+            activeHeroSynergyText = activeSynergy,
             combatLogs = listOf(
                 CombatLog(UUID.randomUUID().toString(), "Battle commences! ${playerHero.name} faces ${enemyHero.name} in $encounterTitle.", LogType.INFO)
             ),
@@ -150,6 +158,62 @@ class BattleViewModel : ViewModel() {
                             xp = victoryResult.xpAwarded,
                             cardRewardName = victoryResult.cardNameAwarded ?: "",
                             cardRewardRarity = victoryResult.cardRarityAwarded ?: CardRarity.COMMON
+                        )
+                    )
+                }
+            } else if (config?.isWorldBoss == true) {
+                val state = _uiState.value
+                val bossId = config.worldBossId ?: "world_boss_kronos"
+                PlayerEconomyRepository.instance.recordWorldBossBattle(
+                    bossId = bossId,
+                    damageDealt = state.stats.totalDamageDealt.toLong(),
+                    isVictory = true
+                )
+                PlayerEconomyRepository.instance.recordBattleFinished(isVictory = true, stats = state.stats, isCampaign = false)
+                PlayerEconomyRepository.instance.addPlayerXp(_uiState.value.rewards.xp)
+                PlayerEconomyRepository.instance.addGold(_uiState.value.rewards.gold)
+            } else if (config?.isRaid == true) {
+                val state = _uiState.value
+                val raidId = config.raidId ?: "raid_olympus"
+                PlayerEconomyRepository.instance.recordRaidStageClear(
+                    raidId = raidId,
+                    stageNumber = config.stageNumber,
+                    goldReward = _uiState.value.rewards.gold,
+                    tokenReward = config.eventTokensReward
+                )
+                PlayerEconomyRepository.instance.recordBattleFinished(isVictory = true, stats = state.stats, isCampaign = false)
+                PlayerEconomyRepository.instance.addPlayerXp(_uiState.value.rewards.xp)
+            } else if (config?.isTrial == true) {
+                val state = _uiState.value
+                val trialId = config.trialStageId ?: "trial_olympus"
+                val hpCond = state.playerHero.currentHp.toFloat() / state.playerHero.maxHp >= 0.5f
+                val turnsCond = state.stats.turnsCount <= 8
+                val stars = 1 + (if (hpCond) 1 else 0) + (if (turnsCond) 1 else 0)
+                PlayerEconomyRepository.instance.recordTrialClear(
+                    stageId = trialId,
+                    difficulty = config.endgameDifficulty,
+                    stars = stars,
+                    goldReward = _uiState.value.rewards.gold,
+                    xpReward = _uiState.value.rewards.xp,
+                    tokenReward = config.eventTokensReward
+                )
+                PlayerEconomyRepository.instance.recordBattleFinished(isVictory = true, stats = state.stats, isCampaign = false)
+            } else if (config?.isArenaMatch == true) {
+                val state = _uiState.value
+                val opponent = config.arenaOpponent ?: ArenaCatalog.OPPONENT_POOL.first()
+                val arenaSummary = PlayerEconomyRepository.instance.recordArenaBattleFinished(
+                    opponent = opponent,
+                    isVictory = true,
+                    stats = state.stats
+                )
+                _uiState.update {
+                    it.copy(
+                        arenaBattleResultSummary = arenaSummary,
+                        rewards = BattleRewards(
+                            gold = arenaSummary.goldAwarded,
+                            xp = arenaSummary.xpAwarded,
+                            cardRewardName = "Card Shards (${arenaSummary.cardShardsAwarded}x)",
+                            cardRewardRarity = CardRarity.RARE
                         )
                     )
                 }
@@ -388,16 +452,131 @@ class BattleViewModel : ViewModel() {
 
         // 7. Poison (Hydra Venom Blade)
         if (card.effect.poisonTurns > 0) {
-            eHero = eHero.copy(
-                poisonTurnsRemaining = card.effect.poisonTurns,
-                poisonDamagePerTurn = card.effect.poisonDamagePerTurn
+            eHero = DamageEngine.applyStatusEffect(
+                eHero,
+                com.example.combat.StatusEffectCatalog.createPoison(card.effect.poisonTurns, card.effect.poisonDamagePerTurn)
             )
-            notifText = "Ares Inflicted with Poison (${card.effect.poisonTurns} turns)"
+            notifText = "${eHero.name} Inflicted with Poison (${card.effect.poisonTurns} turns)"
             notifType = NotificationType.STATUS
-            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "Ares poisoned for ${card.effect.poisonDamagePerTurn}/turn.", LogType.POISON))
+            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "${eHero.name} poisoned for ${card.effect.poisonDamagePerTurn}/turn.", LogType.POISON))
         }
 
-        // 8. Relic (Zeus Thunderstone)
+        // 8. Burn / Shock
+        if (card.effect.burnTurns > 0) {
+            eHero = DamageEngine.applyStatusEffect(
+                eHero,
+                com.example.combat.StatusEffectCatalog.createBurn(card.effect.burnTurns, card.effect.burnDamagePerTurn)
+            )
+            newFloating.add(FloatingCombatText(UUID.randomUUID().toString(), "BURN ×${card.effect.burnTurns}", isEnemyTarget = true))
+            notifText = "${eHero.name} Inflicted with Burn (${card.effect.burnTurns} turns)"
+            notifType = NotificationType.STATUS
+            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "${eHero.name} burns for ${card.effect.burnDamagePerTurn}/turn.", LogType.SPELL))
+        }
+
+        // 9. Stun
+        if (card.effect.stunTurns > 0) {
+            eHero = DamageEngine.applyStatusEffect(
+                eHero,
+                com.example.combat.StatusEffectCatalog.createStun(card.effect.stunTurns)
+            )
+            newFloating.add(FloatingCombatText(UUID.randomUUID().toString(), "STUNNED!", isEnemyTarget = true))
+            notifText = "${eHero.name} STUNNED (${card.effect.stunTurns} turn)"
+            notifType = NotificationType.STATUS
+            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "${eHero.name} is stunned for ${card.effect.stunTurns} turn.", LogType.STATUS))
+        }
+
+        // 10. Vulnerable
+        if (card.effect.vulnerableTurns > 0) {
+            eHero = DamageEngine.applyStatusEffect(
+                eHero,
+                com.example.combat.StatusEffectCatalog.createVulnerable(card.effect.vulnerableTurns)
+            )
+            newFloating.add(FloatingCombatText(UUID.randomUUID().toString(), "VULNERABLE +30%", isEnemyTarget = true))
+            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "${eHero.name} is vulnerable (+30% damage taken).", LogType.STATUS))
+        }
+
+        // 11. Weaken
+        if (card.effect.weakenTurns > 0) {
+            eHero = DamageEngine.applyStatusEffect(
+                eHero,
+                com.example.combat.StatusEffectCatalog.createWeaken(card.effect.weakenTurns)
+            )
+            newFloating.add(FloatingCombatText(UUID.randomUUID().toString(), "WEAKEN -25%", isEnemyTarget = true))
+            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "${eHero.name} is weakened (-25% damage dealt).", LogType.STATUS))
+        }
+
+        // 12. Regeneration
+        if (card.effect.regenerationTurns > 0) {
+            pHero = DamageEngine.applyStatusEffect(
+                pHero,
+                com.example.combat.StatusEffectCatalog.createRegeneration(card.effect.regenerationTurns, card.effect.regenerationAmount)
+            )
+            newFloating.add(FloatingCombatText(UUID.randomUUID().toString(), "+${card.effect.regenerationAmount} Regen/t", isEnemyTarget = false, isPositive = true))
+            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "${pHero.name} gains ${card.effect.regenerationAmount} HP regeneration.", LogType.SPELL))
+        }
+
+        // 13. Cleanse
+        if (card.effect.isCleanse) {
+            pHero = DamageEngine.cleanseDebuffs(pHero)
+            newFloating.add(FloatingCombatText(UUID.randomUUID().toString(), "CLEANSED", isEnemyTarget = false, isPositive = true))
+            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "${pHero.name} cleansed all debuffs!", LogType.SPELL))
+        }
+
+        // 14. True Damage (ignores shield)
+        if (card.effect.trueDamage > 0) {
+            val afterTrueHp = (eHero.currentHp - card.effect.trueDamage).coerceAtLeast(0)
+            eHero = eHero.copy(currentHp = afterTrueHp)
+            newFloating.add(FloatingCombatText(UUID.randomUUID().toString(), "-${card.effect.trueDamage} True Dmg", isEnemyTarget = true, damageType = "TRUE"))
+            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "True damage pierces armor for ${card.effect.trueDamage} HP.", LogType.ATTACK))
+        }
+
+        // 15. Lifesteal
+        if (card.effect.lifestealPercent > 0 && card.effect.damage > 0) {
+            val lifesteal = ((card.effect.damage * card.effect.lifestealPercent) / 100).coerceAtLeast(0)
+            val (healed, _) = DamageEngine.applyHeal(pHero, lifesteal)
+            pHero = healed
+            newFloating.add(FloatingCombatText(UUID.randomUUID().toString(), "+$lifesteal Drain", isEnemyTarget = false, isPositive = true))
+        }
+
+        // 16. Execute below threshold
+        if (card.effect.executeThresholdPercent > 0) {
+            if (eHero.hpPercentage <= (card.effect.executeThresholdPercent / 100f)) {
+                eHero = eHero.copy(currentHp = 0)
+                newFloating.add(FloatingCombatText(UUID.randomUUID().toString(), "EXECUTED!", isEnemyTarget = true, isUltimate = true))
+                newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "Soul Weighing: Enemy executed by divine decree!", LogType.ULTIMATE))
+            }
+        }
+
+        // 17. Energy Gain
+        var pEnergy = curState.playerEnergy
+        if (card.effect.energyGain > 0) {
+            pEnergy = (pEnergy + card.effect.energyGain).coerceAtMost(curState.maxPlayerEnergy)
+            newFloating.add(FloatingCombatText(UUID.randomUUID().toString(), "+${card.effect.energyGain} Energy", isEnemyTarget = false, isPositive = true))
+        }
+
+        // 18. Draw Cards
+        var pHand = curState.playerHand
+        var pDraw = curState.playerDrawPile
+        var pDiscard = curState.playerDiscardPile
+        if (card.effect.drawCardsCount > 0) {
+            val handMutable = pHand.toMutableList()
+            val drawMutable = pDraw.toMutableList()
+            val discardMutable = pDiscard.toMutableList()
+            repeat(card.effect.drawCardsCount) {
+                if (drawMutable.isEmpty() && discardMutable.isNotEmpty()) {
+                    drawMutable.addAll(discardMutable.shuffled())
+                    discardMutable.clear()
+                }
+                if (drawMutable.isNotEmpty()) {
+                    handMutable.add(drawMutable.removeAt(0))
+                }
+            }
+            pHand = handMutable
+            pDraw = drawMutable
+            pDiscard = discardMutable
+        }
+
+        // 19. Relic (Zeus Thunderstone)
         if (card.effect.turnStartLightningDamage > 0) {
             pHero = pHero.copy(hasThunderstoneRelic = true)
             notifText = "Zeus's Thunderstone Equipped"
@@ -405,17 +584,33 @@ class BattleViewModel : ViewModel() {
             newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "Zeus's Thunderstone ready.", LogType.PASSIVE))
         }
 
-        val newDiscard = curState.playerDiscardPile + card
-        val totalDmgDealt = curState.stats.totalDamageDealt + card.effect.damage
+        // Boss Phase 2 Transition Check
+        var isBossPhase2 = curState.isBossPhase2Active
+        var bossBanner = curState.bossPhaseBannerText
+        if (activeEncounterConfig?.isBoss == true && eHero.hpPercentage <= 0.50f && !isBossPhase2) {
+            isBossPhase2 = true
+            val bossDef = BossCatalog.findBoss(eHero.id)
+            bossBanner = bossDef?.phases?.getOrNull(1)?.bannerText ?: "PHASE 2: BOSS ENRAGED!"
+            newFloating.add(FloatingCombatText(UUID.randomUUID().toString(), "PHASE 2 TRIGGERED!", isEnemyTarget = true, isUltimate = true))
+            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "⚠️ $bossBanner ⚠️", LogType.ULTIMATE))
+        }
+
+        val newDiscard = pDiscard + card
+        val totalDmgDealt = curState.stats.totalDamageDealt + card.effect.damage + card.effect.trueDamage
         val isVictory = !eHero.isAlive
 
         _uiState.update {
             it.copy(
                 playerHero = pHero,
                 enemyHero = eHero,
+                playerEnergy = pEnergy,
+                playerHand = pHand,
+                playerDrawPile = pDraw,
                 playerDiscardPile = newDiscard,
                 combatLogs = newLogs,
                 floatingTexts = newFloating,
+                isBossPhase2Active = isBossPhase2,
+                bossPhaseBannerText = bossBanner,
                 activeNotification = if (notifText.isNotEmpty()) CombatNotification(UUID.randomUUID().toString(), notifText, notifType) else it.activeNotification,
                 stats = it.stats.copy(
                     totalDamageDealt = totalDmgDealt,
@@ -531,9 +726,14 @@ class BattleViewModel : ViewModel() {
     }
 
     /**
-     * Hercules Ultimate: TWELVE LABORS (Requirements #1, #7)
+     * Hero Ultimate Ability (Phase 9 Requirement #1, #7).
+     * Differentiates abilities across all mythology champions.
      */
     fun activateTwelveLaborsUltimate() {
+        activateHeroUltimate()
+    }
+
+    fun activateHeroUltimate() {
         val state = _uiState.value
         if (state.currentTurn != BattleTurn.PLAYER_TURN || state.isExecutingTurn) {
             return
@@ -543,6 +743,10 @@ class BattleViewModel : ViewModel() {
             return
         }
 
+        val heroId = state.playerHero.id.lowercase()
+        val heroDef = HeroCatalog.findHero(state.playerHero.id) ?: HeroCatalog.HERCULES
+        val ultName = heroDef.ultimateName
+
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -550,7 +754,7 @@ class BattleViewModel : ViewModel() {
                     isExecutingTurn = true,
                     isUltimateCinematicActive = true,
                     screenShakeTrigger = it.screenShakeTrigger + 1,
-                    activeNotification = CombatNotification(UUID.randomUUID().toString(), "⚡ TWELVE LABORS UNLEASHED ⚡", NotificationType.ULTIMATE)
+                    activeNotification = CombatNotification(UUID.randomUUID().toString(), "⚡ $ultName ⚡", NotificationType.ULTIMATE)
                 )
             }
 
@@ -558,18 +762,67 @@ class BattleViewModel : ViewModel() {
             delay(1400)
 
             val curState = _uiState.value
+            var pHero = curState.playerHero
+            var eHero = curState.enemyHero
+            val newFloating = curState.floatingTexts.toMutableList()
+            val newLogs = curState.combatLogs.toMutableList()
+
+            var baseDmg = 4500
+            when {
+                heroId.contains("zeus") -> {
+                    baseDmg = 5000
+                    eHero = DamageEngine.applyStatusEffect(eHero, com.example.combat.StatusEffectCatalog.createStun(1))
+                }
+                heroId.contains("athena") -> {
+                    baseDmg = 2500
+                    pHero = DamageEngine.applyShield(pHero, 3500)
+                }
+                heroId.contains("ares") -> {
+                    baseDmg = 4600
+                    val heal = (baseDmg * 0.15).toInt()
+                    pHero = DamageEngine.applyHeal(pHero, heal).first
+                }
+                heroId.contains("medusa") -> {
+                    baseDmg = 3800
+                    eHero = DamageEngine.applyStatusEffect(eHero, com.example.combat.StatusEffectCatalog.createStun(1))
+                }
+                heroId.contains("hades") -> {
+                    baseDmg = 4400
+                    pHero = DamageEngine.applyShield(pHero, 2000)
+                }
+                heroId.contains("thor") -> {
+                    baseDmg = 4800
+                }
+                heroId.contains("loki") -> {
+                    baseDmg = 3600
+                    eHero = DamageEngine.applyStatusEffect(eHero, com.example.combat.StatusEffectCatalog.createWeaken(2))
+                    eHero = DamageEngine.applyStatusEffect(eHero, com.example.combat.StatusEffectCatalog.createVulnerable(2))
+                }
+                heroId.contains("anubis") -> {
+                    baseDmg = if (eHero.hpPercentage < 0.20f) eHero.currentHp else 4200
+                }
+                heroId.contains("achilles") -> {
+                    baseDmg = 4800
+                }
+                heroId.contains("merlin") -> {
+                    baseDmg = 3500
+                }
+                else -> {
+                    baseDmg = 4500
+                }
+            }
+
             val damageResult = DamageEngine.calculateAndApplyDamage(
-                attacker = curState.playerHero,
-                defender = curState.enemyHero,
-                baseDamage = 4500,
+                attacker = pHero,
+                defender = eHero,
+                baseDamage = baseDmg,
                 isPhysical = false
             )
 
             val updatedEnemy = damageResult.updatedDefender
-            val newLogs = curState.combatLogs.toMutableList()
-            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "TWELVE LABORS! Devastating blow deals ${damageResult.modifiedDamage} damage to Ares.", LogType.ULTIMATE))
+            PlayerEconomyRepository.instance.onDamageDealt(damageResult.modifiedDamage)
+            newLogs.add(0, CombatLog(UUID.randomUUID().toString(), "$ultName! Deals ${damageResult.modifiedDamage} damage to ${updatedEnemy.name}.", LogType.ULTIMATE))
 
-            val newFloating = curState.floatingTexts.toMutableList()
             newFloating.add(
                 FloatingCombatText(
                     id = UUID.randomUUID().toString(),
@@ -580,15 +833,15 @@ class BattleViewModel : ViewModel() {
             )
 
             val isVictory = !updatedEnemy.isAlive
-            PlayerEconomyRepository.instance.onDamageDealt(damageResult.modifiedDamage)
 
             _uiState.update {
                 it.copy(
+                    playerHero = pHero,
                     enemyHero = updatedEnemy,
                     combatLogs = newLogs,
                     floatingTexts = newFloating,
                     isUltimateCinematicActive = false,
-                    activeNotification = CombatNotification(UUID.randomUUID().toString(), "Twelve Labors deals ${damageResult.modifiedDamage} damage!", NotificationType.ULTIMATE),
+                    activeNotification = CombatNotification(UUID.randomUUID().toString(), "$ultName deals ${damageResult.modifiedDamage} damage!", NotificationType.ULTIMATE),
                     stats = it.stats.copy(
                         totalDamageDealt = it.stats.totalDamageDealt + damageResult.modifiedDamage,
                         ultimateUses = it.stats.ultimateUses + 1
@@ -613,7 +866,7 @@ class BattleViewModel : ViewModel() {
 
     /**
      * Sequential Turn Progression (Requirements #8, #9):
-     * Player Turn Ends -> Enemy Turn Begins -> Poison & Status resolves with floating text ->
+     * Player Turn Ends -> Enemy Turn Begins -> Status effects resolve ->
      * AI actions sequentially -> Enemy Turn Ends -> Player Turn Begins -> Resources Refresh -> Cards Draw
      */
     fun endTurn() {
@@ -631,12 +884,11 @@ class BattleViewModel : ViewModel() {
 
             delay(500)
 
-            // Step 1: Start-of-Enemy-Turn Relics & Poison (Requirement #8: Poison activates -> Damage number -> HP updates -> Counter updates)
+            // Step 1: Start-of-Enemy-Turn Relics & Statuses (Burn, Regen, Poison, Relics)
             var preAiState = _uiState.value
             var eHero = preAiState.enemyHero
             var pHero = preAiState.playerHero
             var pMythPower = preAiState.playerMythPower
-            val logs = preAiState.combatLogs.toMutableList()
             val floating = preAiState.floatingTexts.toMutableList()
 
             // Thunderstone Relic
@@ -644,7 +896,7 @@ class BattleViewModel : ViewModel() {
                 val thunderResult = DamageEngine.calculateAndApplyDamage(null, eHero, 1000)
                 eHero = thunderResult.updatedDefender
                 pMythPower = (pMythPower + 10).coerceAtMost(preAiState.maxMythPower)
-                floating.add(FloatingCombatText(UUID.randomUUID().toString(), "-1000 Lightning", isEnemyTarget = true))
+                floating.add(FloatingCombatText(UUID.randomUUID().toString(), "-1000 Lightning", isEnemyTarget = true, damageType = "LIGHTNING"))
                 _uiState.update {
                     it.copy(
                         enemyHero = eHero,
@@ -661,27 +913,38 @@ class BattleViewModel : ViewModel() {
                 }
             }
 
-            // Poison Resolution (Requirement #8)
-            if (eHero.poisonTurnsRemaining > 0) {
-                val poisonDmg = eHero.poisonDamagePerTurn
-                val poisonResult = DamageEngine.calculateAndApplyDamage(null, eHero, poisonDmg)
-                val remainingTurns = eHero.poisonTurnsRemaining - 1
-                eHero = poisonResult.updatedDefender.copy(poisonTurnsRemaining = remainingTurns)
-
-                floating.add(FloatingCombatText(UUID.randomUUID().toString(), "-$poisonDmg Poison", isEnemyTarget = true))
-                _uiState.update {
-                    it.copy(
-                        enemyHero = eHero,
-                        floatingTexts = floating,
-                        activeNotification = CombatNotification(UUID.randomUUID().toString(), "Poison Tick: Ares takes $poisonDmg damage", NotificationType.STATUS)
-                    )
-                }
-                delay(700)
+            // Turn Start Status Effects (Burn, Regen)
+            val (turnStartHero, startFloating) = DamageEngine.resolveTurnStartStatuses(eHero, isEnemy = true)
+            eHero = turnStartHero
+            floating.addAll(startFloating)
+            if (startFloating.isNotEmpty()) {
+                _uiState.update { it.copy(enemyHero = eHero, floatingTexts = floating) }
+                delay(500)
                 if (!eHero.isAlive) {
                     _uiState.update { it.copy(currentTurn = BattleTurn.VICTORY, isExecutingTurn = false, activeNotification = null) }
                     triggerVictory()
                     return@launch
                 }
+            }
+
+            // Stun Check
+            if (eHero.isStunned) {
+                floating.add(FloatingCombatText(UUID.randomUUID().toString(), "STUNNED! (Turn Skipped)", isEnemyTarget = true))
+                _uiState.update {
+                    it.copy(
+                        enemyHero = eHero,
+                        floatingTexts = floating,
+                        activeNotification = CombatNotification(UUID.randomUUID().toString(), "${eHero.name} is STUNNED!", NotificationType.STATUS)
+                    )
+                }
+                delay(800)
+                // Resolve turn end poison
+                val (turnEndHero, endFloating) = DamageEngine.resolveTurnEndStatuses(eHero, isEnemy = true)
+                floating.addAll(endFloating)
+                _uiState.update { it.copy(enemyHero = turnEndHero, floatingTexts = floating) }
+                delay(400)
+                finalizeTurnTransition()
+                return@launch
             }
 
             // Step 2: AI Actions sequentially (Requirement #9)
@@ -694,7 +957,8 @@ class BattleViewModel : ViewModel() {
         val actions = EnemyAi.decideTurnActions(
             enemyHero = currentState.enemyHero,
             playerHero = currentState.playerHero,
-            availableEnergy = currentState.enemyEnergy
+            availableEnergy = currentState.enemyEnergy,
+            isBossPhase2 = currentState.isBossPhase2Active
         )
 
         for (action in actions) {
@@ -703,7 +967,7 @@ class BattleViewModel : ViewModel() {
                     val card = action.card
                     _uiState.update {
                         it.copy(
-                            activeNotification = CombatNotification(UUID.randomUUID().toString(), "Ares → ${card.name}", NotificationType.CARD)
+                            activeNotification = CombatNotification(UUID.randomUUID().toString(), "${currentState.enemyHero.name} → ${card.name}", NotificationType.CARD)
                         )
                     }
                     soundManager?.playCardSound()
@@ -716,13 +980,28 @@ class BattleViewModel : ViewModel() {
                     _uiState.update {
                         it.copy(
                             isEnemyAttacking = true,
-                            activeNotification = CombatNotification(UUID.randomUUID().toString(), "Ares attacks Hercules directly", NotificationType.ATTACK)
+                            activeNotification = CombatNotification(UUID.randomUUID().toString(), "${currentState.enemyHero.name} attacks directly", NotificationType.ATTACK)
                         )
                     }
                     soundManager?.playAttackSound()
                     delay(400)
 
                     resolveEnemyBasicAttack(action.baseDamage)
+                    delay(500)
+                    _uiState.update { it.copy(isEnemyAttacking = false) }
+                }
+                is AiAction.BossSpecialAbility -> {
+                    _uiState.update {
+                        it.copy(
+                            isEnemyAttacking = true,
+                            screenShakeTrigger = it.screenShakeTrigger + 1,
+                            activeNotification = CombatNotification(UUID.randomUUID().toString(), "BOSS: ${action.abilityName}!", NotificationType.ULTIMATE)
+                        )
+                    }
+                    soundManager?.playUltimateSound()
+                    delay(500)
+
+                    resolveEnemyBasicAttack(action.damage)
                     delay(500)
                     _uiState.update { it.copy(isEnemyAttacking = false) }
                 }
@@ -733,7 +1012,14 @@ class BattleViewModel : ViewModel() {
             }
         }
 
+        // Resolve end-of-turn Poison
+        val preFinal = _uiState.value
+        val (turnEndHero, endFloating) = DamageEngine.resolveTurnEndStatuses(preFinal.enemyHero, isEnemy = true)
+        val floating = preFinal.floatingTexts.toMutableList()
+        floating.addAll(endFloating)
+        _uiState.update { it.copy(enemyHero = turnEndHero, floatingTexts = floating) }
         delay(400)
+
         finalizeTurnTransition()
     }
 
@@ -851,11 +1137,39 @@ class BattleViewModel : ViewModel() {
                 )
             }
             soundManager?.playDefeatSound()
-            PlayerEconomyRepository.instance.recordBattleFinished(
-                isVictory = false,
-                stats = state.stats,
-                isCampaign = activeEncounterConfig?.stageId != null
-            )
+            if (activeEncounterConfig?.isArenaMatch == true) {
+                val opponent = activeEncounterConfig?.arenaOpponent ?: ArenaCatalog.OPPONENT_POOL.first()
+                val arenaSummary = PlayerEconomyRepository.instance.recordArenaBattleFinished(
+                    opponent = opponent,
+                    isVictory = false,
+                    stats = state.stats
+                )
+                _uiState.update {
+                    it.copy(
+                        arenaBattleResultSummary = arenaSummary,
+                        rewards = BattleRewards(
+                            gold = arenaSummary.goldAwarded,
+                            xp = arenaSummary.xpAwarded,
+                            cardRewardName = "Participation Shards",
+                            cardRewardRarity = CardRarity.COMMON
+                        )
+                    )
+                }
+            } else {
+                if (activeEncounterConfig?.isWorldBoss == true) {
+                    val bossId = activeEncounterConfig?.worldBossId ?: "world_boss_kronos"
+                    PlayerEconomyRepository.instance.recordWorldBossBattle(
+                        bossId = bossId,
+                        damageDealt = state.stats.totalDamageDealt.toLong(),
+                        isVictory = false
+                    )
+                }
+                PlayerEconomyRepository.instance.recordBattleFinished(
+                    isVictory = false,
+                    stats = state.stats,
+                    isCampaign = activeEncounterConfig?.stageId != null
+                )
+            }
             return
         }
 

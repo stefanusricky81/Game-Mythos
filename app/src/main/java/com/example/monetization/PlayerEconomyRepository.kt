@@ -77,8 +77,38 @@ data class PlayerEconomyState(
     val alliances: List<Alliance> = AllianceCatalog.createDefaultAlliances(),
     val playerAllianceId: String? = null,
     val activeEvents: List<MythosEvent> = EventCatalog.getDefaultEvents(),
-    val notifications: List<MythosNotification> = emptyList()
+    val notifications: List<MythosNotification> = emptyList(),
+    // Phase 10 Endgame PvE Systems
+    val eventTokens: Int = 100,
+    val worldBossCurrentHp: Long = EndgameCatalog.KRONOS.maxHp,
+    val worldBossContributions: Map<String, WorldBossContribution> = emptyMap(),
+    val raidDailyAttempts: Int = 3,
+    val lastRaidAttemptDate: String = "",
+    val raidStageProgress: Map<String, Int> = emptyMap(),
+    val trialStars: Map<String, Int> = emptyMap(),
+    val trialClearedDifficulties: Map<String, Set<String>> = emptyMap(),
+    val weeklyObjectives: List<WeeklyObjective> = EndgameCatalog.createDefaultWeeklyObjectives(),
+    val weeklyObjectiveWeek: String = "",
+    val eventShopPurchases: Map<String, Int> = emptyMap(),
+    // Phase 11 PvP Arena & Competitive Systems
+    val arenaRating: Int = ArenaRatingCalculator.STARTING_RATING,
+    val arenaPeakRating: Int = ArenaRatingCalculator.STARTING_RATING,
+    val arenaWins: Int = 0,
+    val arenaLosses: Int = 0,
+    val arenaCurrentStreak: Int = 0,
+    val arenaHighestStreak: Int = 0,
+    val arenaDailyAttempts: Int = ArenaCatalog.MAX_DAILY_ATTEMPTS,
+    val lastArenaAttemptDate: String = "",
+    val arenaPoints: Int = 0,
+    val arenaFirstWinClaimedDate: String = "",
+    val arenaCurrentSeason: ArenaSeason = ArenaSeason.createDefaultSeason(),
+    val arenaSeasonRewardsClaimed: Set<String> = emptySet(),
+    val arenaMatchHistory: List<ArenaMatchRecord> = emptyList()
 ) {
+    val arenaTier: ArenaRankTier get() = ArenaRankTier.fromRating(arenaRating)
+    val arenaTotalMatches: Int get() = arenaWins + arenaLosses
+    val arenaWinRate: Float get() = if (arenaTotalMatches > 0) (arenaWins.toFloat() / arenaTotalMatches) * 100f else 0f
+
     val playerAlliance: Alliance?
         get() = alliances.find { it.allianceId == playerAllianceId }
 
@@ -188,18 +218,12 @@ class PlayerEconomyRepository(
         billingConfigured = true
         if (MythosConfig.DEBUG_BUILD) return
 
-        // Per the "First launch -> Anonymous Auth -> stable UID" identity flow: establish the
-        // player's identity as early as possible rather than lazily on first purchase, so it's
-        // normally already warm by the time the shop is opened. FirebasePurchaseVerifier calls
-        // ensureSignedIn() again regardless, so this is a latency optimization, not a
-        // correctness requirement.
         if (MythosConfig.SERVER_VERIFICATION_ENABLED) {
             repoScope.launch {
                 try {
                     PlayerIdentity.ensureSignedIn()
                 } catch (e: Exception) {
-                    // Non-fatal here: a purchase attempt will retry sign-in and surface a clear
-                    // error to the player if it keeps failing.
+                    // Non-fatal here: a purchase attempt will retry sign-in
                 }
             }
         }
@@ -246,10 +270,7 @@ class PlayerEconomyRepository(
         if (!prefs.contains("saved_gold")) return
 
         try {
-            // Idempotency ledger for grantEntitlements() (see that function). Loaded before
-            // anything else touches processedPurchaseIds so a reconciliation pass that runs
-            // during app startup (GooglePlayBillingProvider.connect()) never re-grants a
-            // purchase this device already applied in a previous session.
+            // Idempotency ledger for grantEntitlements()
             processedPurchaseIds.addAll(prefs.getStringSet("saved_processed_purchase_ids", emptySet()) ?: emptySet())
 
             val savedGold = prefs.getInt("saved_gold", 25_000)
@@ -468,6 +489,142 @@ class PlayerEconomyRepository(
                     current.activeDeck.createDefensiveCopy()
                 }
 
+                val savedEventTokens = prefs.getInt("saved_event_tokens", 100)
+                val savedWbHp = prefs.getLong("saved_wb_hp", EndgameCatalog.KRONOS.maxHp)
+                val savedRaidAttempts = prefs.getInt("saved_raid_attempts", 3)
+                val savedRaidDate = prefs.getString("saved_raid_date", "") ?: ""
+                val savedWeeklyWeek = prefs.getString("saved_weekly_week", "") ?: ""
+
+                val savedRaidProgressJson = prefs.getString("saved_raid_progress", null)
+                val raidProgressMap = mutableMapOf<String, Int>()
+                if (savedRaidProgressJson != null) {
+                    try {
+                        val json = JSONObject(savedRaidProgressJson)
+                        json.keys().forEach { raidProgressMap[it] = json.getInt(it) }
+                    } catch (e: Exception) {}
+                }
+
+                val savedTrialStarsJson = prefs.getString("saved_trial_stars", null)
+                val trialStarsMap = mutableMapOf<String, Int>()
+                if (savedTrialStarsJson != null) {
+                    try {
+                        val json = JSONObject(savedTrialStarsJson)
+                        json.keys().forEach { trialStarsMap[it] = json.getInt(it) }
+                    } catch (e: Exception) {}
+                }
+
+                val savedShopPurchasesJson = prefs.getString("saved_shop_purchases", null)
+                val shopPurchasesMap = mutableMapOf<String, Int>()
+                if (savedShopPurchasesJson != null) {
+                    try {
+                        val json = JSONObject(savedShopPurchasesJson)
+                        json.keys().forEach { shopPurchasesMap[it] = json.getInt(it) }
+                    } catch (e: Exception) {}
+                }
+
+                val savedWbContribJson = prefs.getString("saved_wb_contributions", null)
+                val wbContribMap = mutableMapOf<String, WorldBossContribution>()
+                if (savedWbContribJson != null) {
+                    try {
+                        val json = JSONObject(savedWbContribJson)
+                        json.keys().forEach { bossId ->
+                            val bObj = json.getJSONObject(bossId)
+                            wbContribMap[bossId] = WorldBossContribution(
+                                bossId = bossId,
+                                totalDamage = bObj.optLong("total_damage", 0L),
+                                highestSingleHit = bObj.optLong("highest_hit", 0L),
+                                battlesCompleted = bObj.optInt("battles", 0),
+                                victories = bObj.optInt("victories", 0),
+                                participationCount = bObj.optInt("participation", 0),
+                                contributionScore = bObj.optLong("score", 0L),
+                                claimedRewardTier = if (bObj.has("claimed_tier") && !bObj.isNull("claimed_tier")) bObj.getString("claimed_tier") else null
+                            )
+                        }
+                    } catch (e: Exception) {}
+                }
+
+                val savedWeeklyObjectivesJson = prefs.getString("saved_weekly_objectives", null)
+                val weeklyObjectivesList = mutableListOf<WeeklyObjective>()
+                if (savedWeeklyObjectivesJson != null) {
+                    try {
+                        val arr = org.json.JSONArray(savedWeeklyObjectivesJson)
+                        val defaults = EndgameCatalog.createDefaultWeeklyObjectives()
+                        for (i in 0 until arr.length()) {
+                            val oObj = arr.getJSONObject(i)
+                            val id = oObj.getString("id")
+                            val defObj = defaults.find { it.id == id }
+                            if (defObj != null) {
+                                weeklyObjectivesList.add(
+                                    defObj.copy(
+                                        progress = oObj.optLong("progress", defObj.progress),
+                                        isClaimed = oObj.optBoolean("is_claimed", defObj.isClaimed)
+                                    )
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {}
+                }
+                val finalWeeklyObjectives = if (weeklyObjectivesList.size == 5) weeklyObjectivesList else EndgameCatalog.createDefaultWeeklyObjectives()
+
+                val savedArenaRating = prefs.getInt("saved_arena_rating", ArenaRatingCalculator.STARTING_RATING)
+                val savedArenaPeakRating = prefs.getInt("saved_arena_peak_rating", maxOf(ArenaRatingCalculator.STARTING_RATING, savedArenaRating))
+                val savedArenaWins = prefs.getInt("saved_arena_wins", 0)
+                val savedArenaLosses = prefs.getInt("saved_arena_losses", 0)
+                val savedArenaCurrentStreak = prefs.getInt("saved_arena_current_streak", 0)
+                val savedArenaHighestStreak = prefs.getInt("saved_arena_highest_streak", 0)
+                val savedArenaAttempts = prefs.getInt("saved_arena_attempts", ArenaCatalog.MAX_DAILY_ATTEMPTS)
+                val savedArenaAttemptDate = prefs.getString("saved_arena_attempt_date", "") ?: ""
+                val savedArenaPoints = prefs.getInt("saved_arena_points", 0)
+                val savedArenaFirstWinDate = prefs.getString("saved_arena_first_win_date", "") ?: ""
+                val savedArenaSeasonClaimed = prefs.getStringSet("saved_arena_season_claimed", null) ?: emptySet()
+                val savedArenaHistoryJson = prefs.getString("saved_arena_history", null)
+                val arenaHistoryList = mutableListOf<ArenaMatchRecord>()
+                if (savedArenaHistoryJson != null) {
+                    try {
+                        val arr = org.json.JSONArray(savedArenaHistoryJson)
+                        for (i in 0 until arr.length()) {
+                            val o = arr.getJSONObject(i)
+                            arenaHistoryList.add(
+                                ArenaMatchRecord(
+                                    matchId = o.getString("match_id"),
+                                    timestamp = o.optLong("timestamp", System.currentTimeMillis()),
+                                    dateFormatted = o.optString("date_formatted", ""),
+                                    opponentName = o.optString("opp_name", ""),
+                                    opponentHeroName = o.optString("opp_hero", ""),
+                                    playerHeroName = o.optString("player_hero", ""),
+                                    opponentArchetype = o.optString("opp_archetype", ""),
+                                    result = ArenaMatchResult.valueOf(o.optString("result", "VICTORY")),
+                                    ratingBefore = o.optInt("rating_before", 1000),
+                                    ratingAfter = o.optInt("rating_after", 1000),
+                                    ratingChange = o.optInt("rating_change", 0),
+                                    turns = o.optInt("turns", 5),
+                                    durationSeconds = o.optInt("duration", 45),
+                                    goldAwarded = o.optInt("gold", 0),
+                                    xpAwarded = o.optInt("xp", 0),
+                                    shardsAwarded = o.optInt("shards", 0),
+                                    arenaPointsAwarded = o.optInt("arena_points", 0)
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {}
+                }
+
+                val savedSeasonId = prefs.getString("saved_arena_season_id", "season_1") ?: "season_1"
+                val savedSeasonNumber = prefs.getInt("saved_arena_season_number", 1)
+                val savedSeasonStart = prefs.getLong("saved_arena_season_start", 0L)
+                val savedSeasonEnd = prefs.getLong("saved_arena_season_end", Long.MAX_VALUE)
+                val restoredSeason = ArenaSeason(
+                    seasonId = savedSeasonId,
+                    seasonNumber = savedSeasonNumber,
+                    startDateMs = savedSeasonStart,
+                    endDateMs = savedSeasonEnd,
+                    rating = savedArenaRating,
+                    peakRating = savedArenaPeakRating,
+                    wins = savedArenaWins,
+                    losses = savedArenaLosses,
+                    matches = savedArenaWins + savedArenaLosses
+                )
+
                 current.copy(
                     gold = savedGold,
                     mythGems = savedGems,
@@ -490,7 +647,30 @@ class PlayerEconomyRepository(
                     loginRewardDay = savedLoginRewardDay,
                     lastLoginRewardDate = savedLastLoginRewardDate,
                     alliances = restoredAlliances,
-                    playerAllianceId = savedPlayerAllianceId
+                    playerAllianceId = savedPlayerAllianceId,
+                    eventTokens = savedEventTokens,
+                    worldBossCurrentHp = savedWbHp,
+                    worldBossContributions = wbContribMap,
+                    raidDailyAttempts = savedRaidAttempts,
+                    lastRaidAttemptDate = savedRaidDate,
+                    raidStageProgress = raidProgressMap,
+                    trialStars = trialStarsMap,
+                    weeklyObjectives = finalWeeklyObjectives,
+                    weeklyObjectiveWeek = savedWeeklyWeek,
+                    eventShopPurchases = shopPurchasesMap,
+                    arenaRating = savedArenaRating,
+                    arenaPeakRating = savedArenaPeakRating,
+                    arenaWins = savedArenaWins,
+                    arenaLosses = savedArenaLosses,
+                    arenaCurrentStreak = savedArenaCurrentStreak,
+                    arenaHighestStreak = savedArenaHighestStreak,
+                    arenaDailyAttempts = savedArenaAttempts,
+                    lastArenaAttemptDate = savedArenaAttemptDate,
+                    arenaPoints = savedArenaPoints,
+                    arenaFirstWinClaimedDate = savedArenaFirstWinDate,
+                    arenaSeasonRewardsClaimed = savedArenaSeasonClaimed,
+                    arenaMatchHistory = arenaHistoryList,
+                    arenaCurrentSeason = restoredSeason
                 )
             }
         } catch (e: Exception) {
@@ -578,6 +758,60 @@ class PlayerEconomyRepository(
 
             val claimedRewardsSet = current.playerProgress.claimedLevelRewards.map { it.toString() }.toSet()
 
+            val raidProgressJson = JSONObject()
+            current.raidStageProgress.forEach { (k, v) -> raidProgressJson.put(k, v) }
+
+            val trialStarsJson = JSONObject()
+            current.trialStars.forEach { (k, v) -> trialStarsJson.put(k, v) }
+
+            val shopPurchasesJson = JSONObject()
+            current.eventShopPurchases.forEach { (k, v) -> shopPurchasesJson.put(k, v) }
+
+            val wbContribJson = JSONObject()
+            current.worldBossContributions.forEach { (k, v) ->
+                val bObj = JSONObject()
+                bObj.put("total_damage", v.totalDamage)
+                bObj.put("highest_hit", v.highestSingleHit)
+                bObj.put("battles", v.battlesCompleted)
+                bObj.put("victories", v.victories)
+                bObj.put("participation", v.participationCount)
+                bObj.put("score", v.contributionScore)
+                bObj.put("claimed_tier", v.claimedRewardTier)
+                wbContribJson.put(k, bObj)
+            }
+
+            val weeklyArr = org.json.JSONArray()
+            current.weeklyObjectives.forEach { obj ->
+                val oObj = JSONObject()
+                oObj.put("id", obj.id)
+                oObj.put("progress", obj.progress)
+                oObj.put("is_claimed", obj.isClaimed)
+                weeklyArr.put(oObj)
+            }
+
+            val historyArr = org.json.JSONArray()
+            current.arenaMatchHistory.take(20).forEach { m ->
+                val o = JSONObject()
+                o.put("match_id", m.matchId)
+                o.put("timestamp", m.timestamp)
+                o.put("date_formatted", m.dateFormatted)
+                o.put("opp_name", m.opponentName)
+                o.put("opp_hero", m.opponentHeroName)
+                o.put("player_hero", m.playerHeroName)
+                o.put("opp_archetype", m.opponentArchetype)
+                o.put("result", m.result.name)
+                o.put("rating_before", m.ratingBefore)
+                o.put("rating_after", m.ratingAfter)
+                o.put("rating_change", m.ratingChange)
+                o.put("turns", m.turns)
+                o.put("duration", m.durationSeconds)
+                o.put("gold", m.goldAwarded)
+                o.put("xp", m.xpAwarded)
+                o.put("shards", m.shardsAwarded)
+                o.put("arena_points", m.arenaPointsAwarded)
+                historyArr.put(o)
+            }
+
             prefs.edit()
                 .putInt("saved_gold", current.gold)
                 .putInt("saved_gems", current.mythGems)
@@ -615,6 +849,32 @@ class PlayerEconomyRepository(
                 .putString("saved_player_alliance_role", current.playerProgress.allianceRole)
                 .putLong("saved_alliance_contribution", current.playerProgress.allianceContribution)
                 .putString("saved_alliances_json", alliancesArray.toString())
+                .putInt("saved_event_tokens", current.eventTokens)
+                .putLong("saved_wb_hp", current.worldBossCurrentHp)
+                .putInt("saved_raid_attempts", current.raidDailyAttempts)
+                .putString("saved_raid_date", current.lastRaidAttemptDate)
+                .putString("saved_weekly_week", current.weeklyObjectiveWeek)
+                .putString("saved_raid_progress", raidProgressJson.toString())
+                .putString("saved_trial_stars", trialStarsJson.toString())
+                .putString("saved_shop_purchases", shopPurchasesJson.toString())
+                .putString("saved_wb_contributions", wbContribJson.toString())
+                .putString("saved_weekly_objectives", weeklyArr.toString())
+                .putInt("saved_arena_rating", current.arenaRating)
+                .putInt("saved_arena_peak_rating", current.arenaPeakRating)
+                .putInt("saved_arena_wins", current.arenaWins)
+                .putInt("saved_arena_losses", current.arenaLosses)
+                .putInt("saved_arena_current_streak", current.arenaCurrentStreak)
+                .putInt("saved_arena_highest_streak", current.arenaHighestStreak)
+                .putInt("saved_arena_attempts", current.arenaDailyAttempts)
+                .putString("saved_arena_attempt_date", current.lastArenaAttemptDate)
+                .putInt("saved_arena_points", current.arenaPoints)
+                .putString("saved_arena_first_win_date", current.arenaFirstWinClaimedDate)
+                .putStringSet("saved_arena_season_claimed", current.arenaSeasonRewardsClaimed)
+                .putString("saved_arena_history", historyArr.toString())
+                .putString("saved_arena_season_id", current.arenaCurrentSeason.seasonId)
+                .putInt("saved_arena_season_number", current.arenaCurrentSeason.seasonNumber)
+                .putLong("saved_arena_season_start", current.arenaCurrentSeason.startDateMs)
+                .putLong("saved_arena_season_end", current.arenaCurrentSeason.endDateMs)
                 // Idempotency ledger for grantEntitlements() - written on every save (not just
                 // after a purchase) so it's never stale relative to whatever else is persisted.
                 .putStringSet("saved_processed_purchase_ids", processedPurchaseIds.toSet())
@@ -630,16 +890,6 @@ class PlayerEconomyRepository(
     /**
      * Centralized Entitlement Granting (Requirements #14, #21 & #26).
      * Automatically converts duplicate card grants to card shards!
-     *
-     * This is the ONE place that decides whether a given purchaseId actually mutates local
-     * state, and it's the authoritative guard against double-granting a real-money purchase -
-     * NOT the server's CREDITED_NOW/ALREADY_CREDITED status (see GooglePlayBillingProvider,
-     * which deliberately calls this for both outcomes). [processedPurchaseIds] is persisted
-     * (loaded in loadFromPersistence(), written in saveToPersistence()) specifically so this
-     * check survives an app restart - it used to be in-memory only, which was the root cause of
-     * a real double-grant bug: a purchase already granted and saved to SharedPreferences could
-     * be granted AGAIN if the app restarted before consumePurchase() finished and
-     * reconcileUnconsumedPurchases() re-verified the same still-unconsumed token.
      */
     @Synchronized
     fun grantEntitlements(record: PurchaseRecord, items: List<BundleItem>): Boolean {
@@ -1066,11 +1316,357 @@ class PlayerEconomyRepository(
                 it.copy(
                     dailyQuests = DailyQuestConfig.createDefaultQuests(),
                     dailyQuestDate = currentDate,
+                    raidDailyAttempts = 3,
+                    lastRaidAttemptDate = currentDate,
+                    arenaDailyAttempts = ArenaCatalog.MAX_DAILY_ATTEMPTS,
+                    lastArenaAttemptDate = currentDate,
                     activeDeck = it.activeDeck.createDefensiveCopy()
                 )
             }
             saveToPersistence()
         }
+        checkWeeklyReset()
+        checkSeasonReset()
+    }
+
+    /**
+     * Calendar-based weekly objective reset (Phase 10 Section 13).
+     * Does NOT interfere with daily quests or daily login rewards.
+     */
+    @Synchronized
+    fun checkWeeklyReset(forceWeek: String? = null) {
+        val currentWeek = forceWeek ?: EndgameCatalog.getCurrentWeekId()
+        val current = _economyState.value
+        if (current.weeklyObjectiveWeek != currentWeek) {
+            _economyState.update {
+                it.copy(
+                    weeklyObjectives = EndgameCatalog.createDefaultWeeklyObjectives(),
+                    weeklyObjectiveWeek = currentWeek,
+                    activeDeck = it.activeDeck.createDefensiveCopy()
+                )
+            }
+            saveToPersistence()
+        }
+    }
+
+    /**
+     * Updates weekly objective progress idempotently (Phase 10 Section 13).
+     */
+    @Synchronized
+    fun updateWeeklyObjectiveProgress(type: WeeklyObjectiveType, amount: Long) {
+        if (amount <= 0L) return
+        _economyState.update { current ->
+            val updated = current.weeklyObjectives.map { obj ->
+                if (obj.type == type && !obj.isClaimed) {
+                    val newProgress = minOf(obj.target, obj.progress + amount)
+                    obj.copy(progress = newProgress)
+                } else obj
+            }
+            current.copy(
+                weeklyObjectives = updated,
+                activeDeck = current.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+    }
+
+    /**
+     * Claims a completed Weekly Objective reward atomically (Phase 10 Section 13).
+     */
+    @Synchronized
+    fun claimWeeklyObjective(objectiveId: String): Result<WeeklyObjective> {
+        val current = _economyState.value
+        val obj = current.weeklyObjectives.find { it.id == objectiveId }
+            ?: return Result.failure(IllegalArgumentException("Weekly objective '$objectiveId' not found."))
+
+        if (!obj.isCompleted) {
+            return Result.failure(IllegalStateException("Objective not completed yet (${obj.progress}/${obj.target})."))
+        }
+        if (obj.isClaimed) {
+            return Result.failure(IllegalStateException("Weekly objective reward already claimed."))
+        }
+
+        val updatedObjectives = current.weeklyObjectives.map {
+            if (it.id == objectiveId) it.copy(isClaimed = true) else it
+        }
+
+        val targetHero = current.selectedHeroId
+        val updatedHeroShards = current.heroShards.toMutableMap()
+        if (obj.heroShardsReward > 0) {
+            updatedHeroShards[targetHero] = (updatedHeroShards[targetHero] ?: 0) + obj.heroShardsReward
+        }
+
+        val preservedDeck = current.activeDeck.createDefensiveCopy()
+
+        _economyState.update { state ->
+            state.copy(
+                gold = state.gold + obj.goldReward,
+                eventTokens = state.eventTokens + obj.eventTokensReward,
+                heroShards = updatedHeroShards,
+                weeklyObjectives = updatedObjectives,
+                activeDeck = preservedDeck
+            )
+        }
+        saveToPersistence()
+        return Result.success(obj.copy(isClaimed = true))
+    }
+
+    /**
+     * Adds Event Currency (EVENT_TOKENS) safely (Phase 10 Section 11).
+     * Separate from Gold and Gems. Never connects to real-money payments.
+     */
+    @Synchronized
+    fun addEventTokens(amount: Int) {
+        if (amount <= 0) return
+        _economyState.update { current ->
+            current.copy(
+                eventTokens = current.eventTokens + amount,
+                activeDeck = current.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+    }
+
+    /**
+     * Records World Boss battle outcome, deals persistent boss damage, and tracks contribution (Phase 10 Sections 3, 4, 5).
+     */
+    @Synchronized
+    fun recordWorldBossBattle(bossId: String, damageDealt: Long, isVictory: Boolean = false) {
+        val current = _economyState.value
+        val curHp = current.worldBossCurrentHp
+        val remainingHp = maxOf(0L, curHp - damageDealt)
+
+        val existingContrib = current.worldBossContributions[bossId] ?: WorldBossContribution(bossId = bossId)
+        val newTotalDamage = existingContrib.totalDamage + damageDealt
+        val newHighestHit = maxOf(existingContrib.highestSingleHit, damageDealt)
+        val newBattles = existingContrib.battlesCompleted + 1
+        val newVictories = if (isVictory) existingContrib.victories + 1 else existingContrib.victories
+        val newParticipation = existingContrib.participationCount + 1
+        val newScore = newTotalDamage + (newBattles * 1_000L) + (newVictories * 5_000L)
+
+        val updatedContrib = existingContrib.copy(
+            totalDamage = newTotalDamage,
+            highestSingleHit = newHighestHit,
+            battlesCompleted = newBattles,
+            victories = newVictories,
+            participationCount = newParticipation,
+            contributionScore = newScore
+        )
+
+        val updatedMap = current.worldBossContributions.toMutableMap()
+        updatedMap[bossId] = updatedContrib
+
+        // Award 25 Event Tokens for participation
+        val newTokens = current.eventTokens + 25
+
+        _economyState.update { state ->
+            state.copy(
+                worldBossCurrentHp = remainingHp,
+                worldBossContributions = updatedMap,
+                eventTokens = newTokens,
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+
+        updateWeeklyObjectiveProgress(WeeklyObjectiveType.DEAL_WORLD_BOSS_DAMAGE, damageDealt)
+        addAllianceContribution(
+            battlesWon = if (isVictory) 1 else 0,
+            damageDealt = damageDealt
+        )
+        saveToPersistence()
+    }
+
+    /**
+     * Claims World Boss reward tier based on accumulated personal damage contribution (Phase 10 Section 6).
+     */
+    @Synchronized
+    fun claimWorldBossReward(bossId: String): Result<WorldBossRewardTier> {
+        val current = _economyState.value
+        val contrib = current.worldBossContributions[bossId]
+            ?: return Result.failure(IllegalStateException("No contribution recorded for boss '$bossId'."))
+
+        if (contrib.participationCount <= 0) {
+            return Result.failure(IllegalStateException("No participation recorded for boss '$bossId'."))
+        }
+        if (contrib.claimedRewardTier != null) {
+            return Result.failure(IllegalStateException("World Boss rewards have already been claimed."))
+        }
+
+        val tier = WorldBossRewardTier.determineTier(contrib.totalDamage)
+        val updatedContrib = contrib.copy(claimedRewardTier = tier.name)
+        val updatedMap = current.worldBossContributions.toMutableMap()
+        updatedMap[bossId] = updatedContrib
+
+        val targetHero = current.selectedHeroId
+        val updatedHeroShards = current.heroShards.toMutableMap()
+        if (tier.heroShardsReward > 0) {
+            updatedHeroShards[targetHero] = (updatedHeroShards[targetHero] ?: 0) + tier.heroShardsReward
+        }
+
+        val targetCard = "c_titans_wrath"
+        val updatedCardShards = current.cardShards.toMutableMap()
+        if (tier.cardShardsReward > 0) {
+            updatedCardShards[targetCard] = (updatedCardShards[targetCard] ?: 0) + tier.cardShardsReward
+        }
+
+        _economyState.update { state ->
+            state.copy(
+                gold = state.gold + tier.goldReward,
+                eventTokens = state.eventTokens + tier.eventTokensReward,
+                heroShards = updatedHeroShards,
+                cardShards = updatedCardShards,
+                worldBossContributions = updatedMap,
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return Result.success(tier)
+    }
+
+    /**
+     * Consumes one daily raid attempt (Phase 10 Section 9).
+     * Returns true if attempt consumed successfully, false if no attempts left.
+     */
+    @Synchronized
+    fun consumeRaidAttempt(): Boolean {
+        val current = _economyState.value
+        if (current.raidDailyAttempts <= 0) {
+            return false
+        }
+        _economyState.update { state ->
+            state.copy(
+                raidDailyAttempts = state.raidDailyAttempts - 1,
+                lastRaidAttemptDate = MythosDateUtil.getCurrentLocalDate(),
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        updateWeeklyObjectiveProgress(WeeklyObjectiveType.PARTICIPATE_RAIDS, 1L)
+        saveToPersistence()
+        return true
+    }
+
+    /**
+     * Records Raid Stage clear and awards configured rewards (Phase 10 Section 8, 9).
+     */
+    @Synchronized
+    fun recordRaidStageClear(raidId: String, stageNumber: Int, goldReward: Int, tokenReward: Int): Boolean {
+        val current = _economyState.value
+        val curProgress = current.raidStageProgress[raidId] ?: 0
+        val newProgress = maxOf(curProgress, stageNumber)
+        val updatedMap = current.raidStageProgress.toMutableMap()
+        updatedMap[raidId] = newProgress
+
+        _economyState.update { state ->
+            state.copy(
+                gold = state.gold + goldReward,
+                eventTokens = state.eventTokens + tokenReward,
+                raidStageProgress = updatedMap,
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        updateWeeklyObjectiveProgress(WeeklyObjectiveType.CLEAR_ENDGAME_STAGES, 1L)
+        saveToPersistence()
+        return true
+    }
+
+    /**
+     * Records Endgame Trial clear and awards stars and rewards (Phase 10 Section 2).
+     */
+    @Synchronized
+    fun recordTrialClear(
+        stageId: String,
+        difficulty: EndgameDifficulty,
+        stars: Int,
+        goldReward: Int,
+        xpReward: Int,
+        tokenReward: Int
+    ): Boolean {
+        val current = _economyState.value
+        val curStars = current.trialStars[stageId] ?: 0
+        val newStars = maxOf(curStars, stars)
+        val updatedStars = current.trialStars.toMutableMap()
+        updatedStars[stageId] = newStars
+
+        val clearedDiffs = current.trialClearedDifficulties[stageId] ?: emptySet()
+        val updatedDiffs = current.trialClearedDifficulties.toMutableMap()
+        updatedDiffs[stageId] = clearedDiffs + difficulty.id
+
+        _economyState.update { state ->
+            state.copy(
+                gold = state.gold + goldReward,
+                eventTokens = state.eventTokens + tokenReward,
+                trialStars = updatedStars,
+                trialClearedDifficulties = updatedDiffs,
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        addPlayerXp(xpReward)
+        updateWeeklyObjectiveProgress(WeeklyObjectiveType.CLEAR_ENDGAME_STAGES, 1L)
+        saveToPersistence()
+        return true
+    }
+
+    /**
+     * Purchases an item from the Event Reward Shop using Event Tokens (Phase 10 Section 12).
+     * 100% IN-GAME REWARD SHOP — ABSOLUTE PAYMENT RULE ENFORCED.
+     */
+    @Synchronized
+    fun purchaseEventShopItem(itemId: String): Result<EventShopItem> {
+        val item = EndgameCatalog.DEFAULT_EVENT_SHOP_ITEMS.find { it.itemId == itemId }
+            ?: return Result.failure(IllegalArgumentException("Event shop item '$itemId' not found."))
+
+        val current = _economyState.value
+        val purchasedCount = current.eventShopPurchases[itemId] ?: 0
+
+        if (purchasedCount >= item.purchaseLimit) {
+            return Result.failure(IllegalStateException("Purchase limit reached for '${item.name}'."))
+        }
+        if (current.eventTokens < item.tokenPrice) {
+            val needed = item.tokenPrice - current.eventTokens
+            return Result.failure(IllegalStateException("Insufficient Event Tokens. Need $needed more."))
+        }
+
+        val updatedPurchases = current.eventShopPurchases.toMutableMap()
+        updatedPurchases[itemId] = purchasedCount + 1
+
+        val newTokens = current.eventTokens - item.tokenPrice
+        var newGold = current.gold + item.rewardGold
+        val updatedHeroShards = current.heroShards.toMutableMap()
+        val updatedCardShards = current.cardShards.toMutableMap()
+        val updatedOwnedCards = current.ownedCardIds.toMutableSet()
+        val updatedCardCounts = current.ownedCardCounts.toMutableMap()
+        val updatedFrames = current.ownedFrames.toMutableSet()
+
+        if (item.rewardHeroShards > 0) {
+            val hId = item.rewardHeroId
+            updatedHeroShards[hId] = (updatedHeroShards[hId] ?: 0) + item.rewardHeroShards
+        }
+        if (item.rewardCardShards > 0) {
+            val cId = item.rewardCardId
+            updatedCardShards[cId] = (updatedCardShards[cId] ?: 0) + item.rewardCardShards
+        }
+        if (item.category == "EXCLUSIVE_CARD") {
+            addOrDuplicateCardInternal(item.rewardCardId, CardRarity.LEGENDARY, updatedOwnedCards, updatedCardCounts, updatedCardShards)
+        }
+        if (item.category == "COSMETIC" && item.rewardCosmeticId.isNotBlank()) {
+            updatedFrames.add(item.rewardCosmeticId)
+        }
+
+        _economyState.update { state ->
+            state.copy(
+                eventTokens = newTokens,
+                gold = newGold,
+                heroShards = updatedHeroShards,
+                cardShards = updatedCardShards,
+                ownedCardIds = updatedOwnedCards,
+                ownedCardCounts = updatedCardCounts,
+                ownedFrames = updatedFrames,
+                eventShopPurchases = updatedPurchases,
+                activeDeck = state.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return Result.success(item)
     }
 
     /**
@@ -1547,6 +2143,15 @@ class PlayerEconomyRepository(
         }
     }
 
+    @Synchronized
+    fun addGold(amount: Int) {
+        if (amount <= 0) return
+        _economyState.update { current ->
+            current.copy(gold = current.gold + amount)
+        }
+        saveToPersistence()
+    }
+
     fun setPlayerAllianceIdForTesting(id: String?) {
         _economyState.update { current ->
             current.copy(
@@ -1556,7 +2161,7 @@ class PlayerEconomyRepository(
         }
     }
 
-    fun setLoginStreakForTesting(streak: Int, lastDate: String?) {
+    fun setLoginStreakForTesting(streak: Int, lastDate: String? = null) {
         _economyState.update { current ->
             current.copy(
                 lastLoginRewardDate = lastDate,
@@ -1595,6 +2200,7 @@ class PlayerEconomyRepository(
             )
         }
         updateQuestProgress(QuestType.DEAL_DAMAGE, damage)
+        updateWeeklyObjectiveProgress(WeeklyObjectiveType.DEAL_DAMAGE, damage.toLong())
         saveToPersistence()
     }
 
@@ -1629,9 +2235,11 @@ class PlayerEconomyRepository(
         }
         if (stats.totalDamageDealt > 0) {
             updateQuestProgress(QuestType.DEAL_DAMAGE, stats.totalDamageDealt)
+            updateWeeklyObjectiveProgress(WeeklyObjectiveType.DEAL_DAMAGE, stats.totalDamageDealt.toLong())
         }
         if (isVictory) {
             updateQuestProgress(QuestType.WIN_BATTLE, 1)
+            updateWeeklyObjectiveProgress(WeeklyObjectiveType.WIN_BATTLES, 1L)
             if (isCampaign) {
                 updateQuestProgress(QuestType.WIN_CAMPAIGN_BATTLE, 1)
             }
@@ -1645,6 +2253,27 @@ class PlayerEconomyRepository(
         )
 
         saveToPersistence()
+    }
+
+    fun setEventTokensForTesting(tokens: Int) {
+        _economyState.update { it.copy(eventTokens = tokens) }
+    }
+
+    fun setRaidDailyAttemptsForTesting(attempts: Int) {
+        _economyState.update { it.copy(raidDailyAttempts = attempts) }
+    }
+
+    fun setWeeklyObjectiveProgressForTesting(id: String, progress: Long) {
+        _economyState.update { current ->
+            val updated = current.weeklyObjectives.map {
+                if (it.id == id) it.copy(progress = progress) else it
+            }
+            current.copy(weeklyObjectives = updated)
+        }
+    }
+
+    fun setWorldBossHpForTesting(hp: Long) {
+        _economyState.update { it.copy(worldBossCurrentHp = hp) }
     }
 
     fun setPlayerLevelForTesting(level: Int, xp: Int = 0) {
@@ -2066,6 +2695,241 @@ class PlayerEconomyRepository(
         saveToPersistence()
 
         return Pair(true, pulledCards)
+    }
+
+    // =========================================================================
+    // PHASE 11: PVP ARENA & COMPETITIVE SYSTEM
+    // =========================================================================
+
+    /**
+     * Consumes one arena attempt when a PvP match officially starts (Requirement #7).
+     * Returns true if attempt was available and consumed, false otherwise.
+     */
+    @Synchronized
+    fun consumeArenaAttempt(): Boolean {
+        checkDailyReset()
+        val current = _economyState.value
+        if (current.arenaDailyAttempts <= 0) return false
+        _economyState.update {
+            it.copy(
+                arenaDailyAttempts = it.arenaDailyAttempts - 1,
+                activeDeck = it.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return true
+    }
+
+    /**
+     * Records completion of an Arena PvP match (Requirement #2, #4, #8, #12, #13, #14, #18).
+     * Integrates ELO rating change, win streaks, first win of day, rewards, and progression.
+     */
+    @Synchronized
+    fun recordArenaBattleFinished(
+        opponent: ArenaOpponent,
+        isVictory: Boolean,
+        stats: BattleStats
+    ): ArenaBattleResultSummary {
+        checkDailyReset()
+        val current = _economyState.value
+        val matchResult = if (isVictory) ArenaMatchResult.VICTORY else ArenaMatchResult.DEFEAT
+        val ratingDelta = ArenaRatingCalculator.calculateRatingDelta(current.arenaRating, opponent.rating, matchResult)
+        val newRating = ArenaRatingCalculator.applyRatingChange(current.arenaRating, ratingDelta)
+        val newPeakRating = maxOf(current.arenaPeakRating, newRating)
+        val oldTier = current.arenaTier
+        val newTier = ArenaRankTier.fromRating(newRating)
+        val isTierUpgraded = newTier.ordinal > oldTier.ordinal
+
+        val newStreak = if (isVictory) current.arenaCurrentStreak + 1 else 0
+        val newHighestStreak = maxOf(current.arenaHighestStreak, newStreak)
+
+        val currentDate = MythosDateUtil.getCurrentLocalDate()
+        val isFirstWin = isVictory && (current.arenaFirstWinClaimedDate != currentDate)
+
+        val (baseGold, baseShards, basePoints, xp) = when {
+            isVictory && isFirstWin -> listOf(
+                ArenaCatalog.Rewards.FIRST_WIN_GOLD,
+                ArenaCatalog.Rewards.FIRST_WIN_SHARDS,
+                ArenaCatalog.Rewards.FIRST_WIN_ARENA_POINTS,
+                ArenaCatalog.Rewards.FIRST_WIN_XP
+            )
+            isVictory -> listOf(
+                ArenaCatalog.Rewards.NORMAL_WIN_GOLD,
+                ArenaCatalog.Rewards.NORMAL_WIN_SHARDS,
+                ArenaCatalog.Rewards.NORMAL_WIN_ARENA_POINTS,
+                ArenaCatalog.Rewards.NORMAL_WIN_XP
+            )
+            else -> listOf(
+                ArenaCatalog.Rewards.DEFEAT_GOLD,
+                ArenaCatalog.Rewards.DEFEAT_SHARDS,
+                ArenaCatalog.Rewards.DEFEAT_ARENA_POINTS,
+                ArenaCatalog.Rewards.DEFEAT_XP
+            )
+        }
+
+        val streakBonus = if (isVictory) ArenaCatalog.Rewards.getStreakBonus(newStreak) else Pair(0, 0)
+        val totalGold = baseGold + streakBonus.first
+        val totalPoints = basePoints + streakBonus.second
+
+        val matchId = "pvp_match_${System.currentTimeMillis()}"
+        val matchRecord = ArenaMatchRecord(
+            matchId = matchId,
+            timestamp = System.currentTimeMillis(),
+            dateFormatted = currentDate,
+            opponentName = opponent.name,
+            opponentHeroName = opponent.heroName,
+            playerHeroName = HeroCatalog.findHero(current.selectedHeroId)?.name ?: "Hercules",
+            opponentArchetype = opponent.archetype.title,
+            result = matchResult,
+            ratingBefore = current.arenaRating,
+            ratingAfter = newRating,
+            ratingChange = ratingDelta,
+            turns = stats.turnsCount,
+            durationSeconds = maxOf(15, stats.turnsCount * 8),
+            goldAwarded = totalGold,
+            xpAwarded = xp,
+            shardsAwarded = baseShards,
+            arenaPointsAwarded = totalPoints
+        )
+
+        val updatedHistory = (listOf(matchRecord) + current.arenaMatchHistory).take(20)
+
+        _economyState.update { curr ->
+            val newShards = curr.cardShards.toMutableMap()
+            val targetCardId = "c_olympian_guard"
+            newShards[targetCardId] = (newShards[targetCardId] ?: 0) + baseShards
+
+            curr.copy(
+                gold = curr.gold + totalGold,
+                cardShards = newShards,
+                arenaPoints = curr.arenaPoints + totalPoints,
+                arenaRating = newRating,
+                arenaPeakRating = newPeakRating,
+                arenaWins = if (isVictory) curr.arenaWins + 1 else curr.arenaWins,
+                arenaLosses = if (!isVictory) curr.arenaLosses + 1 else curr.arenaLosses,
+                arenaCurrentStreak = newStreak,
+                arenaHighestStreak = newHighestStreak,
+                arenaFirstWinClaimedDate = if (isFirstWin) currentDate else curr.arenaFirstWinClaimedDate,
+                arenaMatchHistory = updatedHistory,
+                activeDeck = curr.activeDeck.createDefensiveCopy()
+            )
+        }
+
+        // Consistently update Player XP, lifetime battles, damage, daily quests, weekly objectives, alliance contribution (Requirement #18)
+        addPlayerXp(xp)
+        recordBattleFinished(isVictory = isVictory, stats = stats, isCampaign = false)
+
+        saveToPersistence()
+
+        return ArenaBattleResultSummary(
+            matchId = matchId,
+            result = matchResult,
+            opponentName = opponent.name,
+            ratingBefore = current.arenaRating,
+            ratingAfter = newRating,
+            ratingChange = ratingDelta,
+            newTier = newTier,
+            isTierUpgraded = isTierUpgraded,
+            goldAwarded = totalGold,
+            xpAwarded = xp,
+            cardShardsAwarded = baseShards,
+            arenaPointsAwarded = totalPoints,
+            isFirstWinOfDay = isFirstWin,
+            currentStreak = newStreak,
+            streakBonusGold = streakBonus.first,
+            streakBonusPoints = streakBonus.second
+        )
+    }
+
+    /**
+     * Checks if current season has expired and performs competitive season reset (Requirement #9).
+     */
+    @Synchronized
+    fun checkSeasonReset(currentTimestampMs: Long = System.currentTimeMillis()) {
+        val current = _economyState.value
+        val season = current.arenaCurrentSeason
+        if (season.endDateMs != Long.MAX_VALUE && currentTimestampMs >= season.endDateMs) {
+            val newRating = ArenaRatingCalculator.calculateSeasonResetRating(current.arenaRating)
+            val nextSeasonNumber = season.seasonNumber + 1
+            val nextSeason = ArenaSeason(
+                seasonId = "season_$nextSeasonNumber",
+                seasonNumber = nextSeasonNumber,
+                startDateMs = currentTimestampMs,
+                endDateMs = currentTimestampMs + ArenaCatalog.SEASON_DURATION_MS,
+                rating = newRating,
+                peakRating = newRating,
+                wins = 0,
+                losses = 0,
+                matches = 0,
+                isRewardsClaimed = false
+            )
+            _economyState.update {
+                it.copy(
+                    arenaRating = newRating,
+                    arenaCurrentSeason = nextSeason,
+                    activeDeck = it.activeDeck.createDefensiveCopy()
+                )
+            }
+            saveToPersistence()
+        }
+    }
+
+    /**
+     * Claims end-of-season rewards (Requirement #10).
+     * Enforces strict idempotency — cannot be claimed twice for the same season.
+     */
+    @Synchronized
+    fun claimSeasonReward(seasonId: String): ArenaSeasonReward? {
+        val current = _economyState.value
+        if (current.arenaSeasonRewardsClaimed.contains(seasonId)) {
+            return null // Idempotent: already claimed
+        }
+        val reward = ArenaCatalog.SEASON_REWARDS[current.arenaTier] ?: return null
+        _economyState.update { curr ->
+            val newShards = curr.cardShards.toMutableMap()
+            newShards["c_olympian_guard"] = (newShards["c_olympian_guard"] ?: 0) + reward.cardShards
+
+            val newHeroShards = curr.heroShards.toMutableMap()
+            if (reward.heroShards > 0) {
+                newHeroShards[HerculesIdentity.HERO_ID] = (newHeroShards[HerculesIdentity.HERO_ID] ?: 0) + reward.heroShards
+            }
+
+            val newFrames = curr.ownedFrames.toMutableSet()
+            reward.exclusiveFrameId?.let { newFrames.add(it) }
+
+            val newCosmetics = curr.ownedCosmeticIds.toMutableSet()
+            reward.exclusiveCosmeticId?.let { newCosmetics.add(it) }
+
+            curr.copy(
+                gold = curr.gold + reward.gold,
+                cardShards = newShards,
+                heroShards = newHeroShards,
+                ownedFrames = newFrames,
+                ownedCosmeticIds = newCosmetics,
+                arenaSeasonRewardsClaimed = curr.arenaSeasonRewardsClaimed + seasonId,
+                activeDeck = curr.activeDeck.createDefensiveCopy()
+            )
+        }
+        saveToPersistence()
+        return reward
+    }
+
+    // Testing Helpers
+    fun setArenaRatingForTesting(rating: Int) {
+        _economyState.update {
+            it.copy(
+                arenaRating = rating,
+                arenaPeakRating = maxOf(it.arenaPeakRating, rating)
+            )
+        }
+    }
+
+    fun setArenaAttemptsForTesting(attempts: Int) {
+        _economyState.update { it.copy(arenaDailyAttempts = attempts) }
+    }
+
+    fun setArenaSeasonForTesting(season: ArenaSeason) {
+        _economyState.update { it.copy(arenaCurrentSeason = season) }
     }
 
     // DEBUG / DEVELOPMENT CHEATS

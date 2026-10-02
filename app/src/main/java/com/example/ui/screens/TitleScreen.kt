@@ -53,6 +53,8 @@ fun TitleScreen(
     onOpenDailyQuests: () -> Unit = {},
     onOpenAlliance: () -> Unit = {},
     onOpenEvents: () -> Unit = {},
+    onOpenEndgame: () -> Unit = {},
+    onOpenArena: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showGuideDialog by remember { mutableStateOf(false) }
@@ -555,6 +557,28 @@ fun TitleScreen(
                     style = MythosButtonStyle.PRIMARY,
                     icon = Icons.Default.Explore,
                     testTag = "open_campaign_button",
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                )
+
+                // Endgame PvE & Raids (Phase 10)
+                MythosButton(
+                    text = "ENDGAME PVE",
+                    subtitle = "World Boss • Raids • Trials • Weekly Objectives",
+                    onClick = onOpenEndgame,
+                    style = MythosButtonStyle.PRIMARY,
+                    icon = Icons.Default.Whatshot,
+                    testTag = "open_endgame_button",
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                )
+
+                // PvP Arena & Competitive (Phase 11 Requirement #16)
+                MythosButton(
+                    text = "ARENA",
+                    subtitle = "PvP Competitive • ELO Rating • Season 1",
+                    onClick = onOpenArena,
+                    style = MythosButtonStyle.PRIMARY,
+                    icon = Icons.Default.SportsMartialArts,
+                    testTag = "open_arena_button",
                     modifier = Modifier.fillMaxWidth().height(52.dp)
                 )
 

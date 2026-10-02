@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.data.ArenaBattleResultSummary
 import com.example.data.BattleRewards
 import com.example.data.BattleStats
 import com.example.data.HerculesIdentity
@@ -40,6 +41,7 @@ fun GameOverDialog(
     stats: BattleStats,
     rewards: BattleRewards,
     campaignVictoryResult: StageVictoryResult? = null,
+    arenaBattleResultSummary: ArenaBattleResultSummary? = null,
     onBattleAgain: () -> Unit,
     onGoHome: () -> Unit,
     onGoToCollection: (() -> Unit)? = null
@@ -47,6 +49,10 @@ fun GameOverDialog(
     val numberFormat = NumberFormat.getNumberInstance(Locale.US)
     val title = if (isVictory) "VICTORY" else "DEFEAT"
     val stageSubtitle = when {
+        arenaBattleResultSummary != null -> {
+            if (isVictory) "GLADIATOR DEFEATED: ${arenaBattleResultSummary.opponentName.uppercase()}"
+            else "OVERCOME IN THE ARENA BY ${arenaBattleResultSummary.opponentName.uppercase()}"
+        }
         !isVictory -> "Ares' unrelenting fury overwhelmed Hercules in battle."
         campaignVictoryResult != null -> {
             if (campaignVictoryResult.isBoss) {
@@ -115,6 +121,121 @@ fun GameOverDialog(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 4.dp, bottom = 10.dp)
                 )
+
+                // ARENA COMPETITIVE RESULT CARD (Phase 11 Requirement #12)
+                if (arenaBattleResultSummary != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF1C172B))
+                            .border(1.dp, MythosTokens.PanelBorder, RoundedCornerShape(12.dp))
+                            .padding(14.dp)
+                            .testTag("arena_result_dialog"),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(text = arenaBattleResultSummary.newTier.badgeSymbol, fontSize = 24.sp)
+                            Text(
+                                text = "${arenaBattleResultSummary.newTier.tierName.uppercase()} TIER",
+                                style = MythosTypography.HeroName.copy(fontSize = 16.sp),
+                                color = arenaBattleResultSummary.newTier.color
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "RATING CHANGE",
+                                    style = MythosTypography.RarityLabel.copy(fontSize = 10.sp),
+                                    color = MythosTokens.TextMuted
+                                )
+                                Text(
+                                    text = if (arenaBattleResultSummary.ratingChange >= 0) "+${arenaBattleResultSummary.ratingChange}" else "${arenaBattleResultSummary.ratingChange}",
+                                    style = MythosTypography.HeroName.copy(fontSize = 18.sp),
+                                    color = if (arenaBattleResultSummary.ratingChange >= 0) MythosTokens.Success else MythosTokens.Damage,
+                                    modifier = Modifier.testTag("arena_rating_change")
+                                )
+                            }
+
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "CURRENT RATING",
+                                    style = MythosTypography.RarityLabel.copy(fontSize = 10.sp),
+                                    color = MythosTokens.TextMuted
+                                )
+                                Text(
+                                    text = "${arenaBattleResultSummary.ratingAfter} ELO",
+                                    style = MythosTypography.HeroName.copy(fontSize = 18.sp),
+                                    color = MythosTokens.PrimaryGold,
+                                    modifier = Modifier.testTag("arena_new_rating")
+                                )
+                            }
+
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "ARENA POINTS",
+                                    style = MythosTypography.RarityLabel.copy(fontSize = 10.sp),
+                                    color = MythosTokens.TextMuted
+                                )
+                                Text(
+                                    text = "+${arenaBattleResultSummary.arenaPointsAwarded} AP",
+                                    style = MythosTypography.HeroName.copy(fontSize = 16.sp),
+                                    color = Color(0xFF38BDF8)
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF261A10))
+                                .padding(vertical = 4.dp)
+                        ) {
+                            if (isVictory) {
+                                Text(
+                                    text = "🔥 ${arenaBattleResultSummary.currentStreak} Win Streak!",
+                                    style = MythosTypography.HeroName.copy(fontSize = 12.sp),
+                                    color = MythosTokens.PrimaryGold
+                                )
+                                if (arenaBattleResultSummary.streakBonusGold > 0) {
+                                    Text(
+                                        text = " (Milestone Bonus: +${arenaBattleResultSummary.streakBonusGold} Gold)",
+                                        style = MythosTypography.CardDescription.copy(fontSize = 10.sp),
+                                        color = MythosTokens.SecondaryGold
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = "Streak Reset to 0",
+                                    style = MythosTypography.CardDescription.copy(fontSize = 11.sp),
+                                    color = MythosTokens.TextMuted
+                                )
+                            }
+                        }
+
+                        if (arenaBattleResultSummary.isFirstWinOfDay) {
+                            Text(
+                                text = "⭐ FIRST WIN OF THE DAY BONUS APPLIED",
+                                style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
+                                color = MythosTokens.PrimaryGold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
 
                 // CAMPAIGN STAR RATING BAR (Requirement #1 & #2)
                 if (isVictory && campaignVictoryResult != null) {

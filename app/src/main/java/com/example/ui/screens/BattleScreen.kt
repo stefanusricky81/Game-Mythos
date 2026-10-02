@@ -307,6 +307,24 @@ fun BattleScreen(
                     isPlayer = false,
                     modifier = Modifier.padding(top = 2.dp)
                 )
+
+                if (uiState.activeHeroSynergyText != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(top = 2.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MythosTokens.PrimaryGold.copy(alpha = 0.15f))
+                            .border(0.5.dp, MythosTokens.PrimaryGold, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = uiState.activeHeroSynergyText ?: "",
+                            style = MythosTypography.CardName.copy(fontSize = 9.sp),
+                            color = MythosTokens.PrimaryGold
+                        )
+                    }
+                }
             }
 
             // CENTER BATTLEFIELD ZONE: Visual Hierarchy with Canonical Combat Arena & Played Cards Area
@@ -473,6 +491,38 @@ fun BattleScreen(
 
         // 3. OVERLAYS & MODALS
 
+        // Boss Phase 2 Transition Banner (Requirement #7, #11)
+        AnimatedVisibility(
+            visible = uiState.isBossPhase2Active && uiState.bossPhaseBannerText != null,
+            enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 90.dp)
+        ) {
+            Surface(
+                color = Color(0xEE8B0000),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.5.dp, MythosTokens.PrimaryGold),
+                modifier = Modifier
+                    .padding(horizontal = 24.dp)
+                    .testTag("boss_phase_banner")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("⚠️", fontSize = 18.sp)
+                    Text(
+                        text = uiState.bossPhaseBannerText ?: "PHASE 2 TRIGGERED!",
+                        style = MythosTypography.GameSubtitle.copy(fontSize = 14.sp),
+                        color = Color.White
+                    )
+                }
+            }
+        }
+
         // Twelve Labors Cinematic Overlay
         if (uiState.isUltimateCinematicActive) {
             TwelveLaborsCinematic()
@@ -511,6 +561,7 @@ fun BattleScreen(
                 stats = uiState.stats,
                 rewards = uiState.rewards,
                 campaignVictoryResult = uiState.campaignVictoryResult,
+                arenaBattleResultSummary = uiState.arenaBattleResultSummary,
                 onBattleAgain = { viewModel.startNewBattle(encounterConfig = viewModel.activeEncounterConfig) },
                 onGoHome = onNavigateBack,
                 onGoToCollection = onGoToCollection

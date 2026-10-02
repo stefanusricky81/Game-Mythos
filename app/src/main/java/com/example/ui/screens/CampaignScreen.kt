@@ -6,6 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -47,7 +48,9 @@ fun CampaignScreen(
 ) {
     val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
     val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
-    val world = CampaignCatalog.getDefaultWorld()
+    val worlds = CampaignCatalog.ALL_WORLDS
+    var selectedWorldId by remember { mutableStateOf(worlds.first().worldId) }
+    val world = worlds.find { it.worldId == selectedWorldId } ?: worlds.first()
     val stages = world.stages
 
     // Selected stage for detail dialog
@@ -169,6 +172,35 @@ fun CampaignScreen(
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // WORLD SELECTOR TABS (Requirement #8)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    worlds.forEachIndexed { index, w ->
+                        val isSelected = w.worldId == world.worldId
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) MythosTokens.PrimaryGold else MythosTokens.Panel,
+                            border = BorderStroke(1.dp, if (isSelected) MythosTokens.PrimaryGold else MythosTokens.PanelBorder),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { selectedWorldId = w.worldId }
+                                .testTag("world_tab_${w.worldId}")
+                        ) {
+                            Text(
+                                text = "W${index + 1}: ${w.name}",
+                                style = MythosTypography.RarityLabel.copy(fontSize = 11.sp),
+                                color = if (isSelected) Color(0xFF161202) else MythosTokens.TextPrimary,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
                 // WORLD PROGRESS HEADER CARD (Requirement #5)
                 Card(
                     modifier = Modifier
@@ -199,7 +231,7 @@ fun CampaignScreen(
                                     .padding(horizontal = 8.dp, vertical = 3.dp)
                             ) {
                                 Text(
-                                    text = "WORLD 1",
+                                    text = "WORLD ${worlds.indexOf(world) + 1}",
                                     style = MythosTypography.RarityLabel.copy(fontSize = 10.sp),
                                     color = MythosTokens.PrimaryGold,
                                     letterSpacing = 1.sp

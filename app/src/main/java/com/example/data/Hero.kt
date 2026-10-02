@@ -1,10 +1,12 @@
 package com.example.data
 
 import com.example.R
+import com.example.combat.StatusEffect
+import com.example.combat.StatusEffectType
 
 /**
  * Data-driven Hero model representing any hero, god, or mythological entity.
- * Works seamlessly for Hercules, Ares, Athena, Zeus, Hades, etc.
+ * Works seamlessly for Hercules, Ares, Athena, Zeus, Hades, Thor, Loki, Anubis, Medusa, etc.
  */
 data class Hero(
     val id: String = "hercules",
@@ -26,7 +28,8 @@ data class Hero(
     val phalanxCounterDamage: Int = 0,
     val hasThunderstoneRelic: Boolean = false,
     val portraitResId: Int = HerculesIdentity.assets.portrait.resolveResId(),
-    val level: Int = 1
+    val level: Int = 1,
+    val statusEffects: List<StatusEffect> = emptyList()
 ) {
     /**
      * Resolves portrait dynamically: when Last Stand passive triggers, switches to
@@ -53,6 +56,21 @@ data class Hero(
         return portraitResId
     }
 
+    val isStunned: Boolean
+        get() = statusEffects.any { it.type == StatusEffectType.STUN && !it.isExpired }
+
+    val isVulnerable: Boolean
+        get() = statusEffects.any { it.type == StatusEffectType.VULNERABLE && !it.isExpired }
+
+    val isWeakened: Boolean
+        get() = statusEffects.any { it.type == StatusEffectType.WEAKEN && !it.isExpired }
+
+    val burnDamagePerTurn: Int
+        get() = statusEffects.filter { it.type == StatusEffectType.BURN && !it.isExpired }.sumOf { it.magnitude }
+
+    val regenerationPerTurn: Int
+        get() = statusEffects.filter { it.type == StatusEffectType.REGENERATION && !it.isExpired }.sumOf { it.magnitude }
+
     val effectiveAttack: Int
         get() {
             var bonus = 0
@@ -60,7 +78,11 @@ data class Hero(
                 bonus += 25
             }
             bonus += attackBuffPercent
-            return (baseAttack * (1.0 + bonus / 100.0)).toInt()
+            if (isWeakened) {
+                bonus -= 25
+            }
+            val multiplier = (1.0 + bonus / 100.0).coerceAtLeast(0.1)
+            return (baseAttack * multiplier).toInt()
         }
 
     val hpPercentage: Float
@@ -88,48 +110,148 @@ data class Hero(
             )
         }
 
-        fun createAres(): Hero = Hero(
-            id = "ares",
-            name = "Ares",
-            title = "God of War & Strife",
-            currentHp = 10000,
-            maxHp = 10000,
-            baseAttack = 2400,
-            baseDefense = 2200,
-            portraitResId = R.drawable.img_enemy_hero
-        )
+        fun createAres(level: Int = 1): Hero {
+            val mult = HeroProgressionConfig.getStatMultiplier(level)
+            val hp = Math.round(10000 * mult).toInt()
+            val atk = Math.round(3000 * mult).toInt()
+            val def = Math.round(2000 * mult).toInt()
+            return Hero(
+                id = "ares",
+                name = "Ares",
+                title = "God of War & Strife",
+                currentHp = hp,
+                maxHp = hp,
+                baseAttack = atk,
+                baseDefense = def,
+                portraitResId = R.drawable.img_enemy_hero,
+                level = level
+            )
+        }
 
-        fun createAthena(): Hero = Hero(
-            id = "athena",
-            name = "Athena",
-            title = "Goddess of Wisdom & Strategy",
-            currentHp = 11000,
-            maxHp = 11000,
-            baseAttack = 2200,
-            baseDefense = 3000,
-            portraitResId = R.drawable.img_hercules_hero
-        )
+        fun createAthena(level: Int = 1): Hero {
+            val mult = HeroProgressionConfig.getStatMultiplier(level)
+            val hp = Math.round(11500 * mult).toInt()
+            val atk = Math.round(2300 * mult).toInt()
+            val def = Math.round(3100 * mult).toInt()
+            return Hero(
+                id = "athena",
+                name = "Athena",
+                title = "Goddess of Wisdom & Strategy",
+                currentHp = hp,
+                maxHp = hp,
+                baseAttack = atk,
+                baseDefense = def,
+                portraitResId = R.drawable.img_hercules_hero,
+                level = level
+            )
+        }
 
-        fun createZeus(): Hero = Hero(
-            id = "zeus",
-            name = "Zeus",
-            title = "King of the Gods • Lord of the Sky",
-            currentHp = 12000,
-            maxHp = 12000,
-            baseAttack = 3200,
-            baseDefense = 2400,
-            portraitResId = R.drawable.img_hercules_hero
-        )
+        fun createZeus(level: Int = 1): Hero {
+            val mult = HeroProgressionConfig.getStatMultiplier(level)
+            val hp = Math.round(10500 * mult).toInt()
+            val atk = Math.round(3500 * mult).toInt()
+            val def = Math.round(2200 * mult).toInt()
+            return Hero(
+                id = "zeus",
+                name = "Zeus",
+                title = "King of Olympus • Lord of the Sky",
+                currentHp = hp,
+                maxHp = hp,
+                baseAttack = atk,
+                baseDefense = def,
+                portraitResId = R.drawable.img_hercules_hero,
+                level = level
+            )
+        }
 
-        fun createHades(): Hero = Hero(
-            id = "hades",
-            name = "Hades",
-            title = "Ruler of the Underworld",
-            currentHp = 11500,
-            maxHp = 11500,
-            baseAttack = 2600,
-            baseDefense = 2800,
-            portraitResId = R.drawable.img_enemy_hero
-        )
+        fun createHades(level: Int = 1): Hero {
+            val mult = HeroProgressionConfig.getStatMultiplier(level)
+            val hp = Math.round(11200 * mult).toInt()
+            val atk = Math.round(2800 * mult).toInt()
+            val def = Math.round(2700 * mult).toInt()
+            return Hero(
+                id = "hades",
+                name = "Hades",
+                title = "Ruler of the Underworld",
+                currentHp = hp,
+                maxHp = hp,
+                baseAttack = atk,
+                baseDefense = def,
+                portraitResId = R.drawable.img_enemy_hero,
+                level = level
+            )
+        }
+
+        fun createThor(level: Int = 1): Hero {
+            val mult = HeroProgressionConfig.getStatMultiplier(level)
+            val hp = Math.round(10800 * mult).toInt()
+            val atk = Math.round(3300 * mult).toInt()
+            val def = Math.round(2400 * mult).toInt()
+            return Hero(
+                id = "thor",
+                name = "Thor",
+                title = "God of Thunder",
+                currentHp = hp,
+                maxHp = hp,
+                baseAttack = atk,
+                baseDefense = def,
+                portraitResId = R.drawable.img_hercules_hero,
+                level = level
+            )
+        }
+
+        fun createLoki(level: Int = 1): Hero {
+            val mult = HeroProgressionConfig.getStatMultiplier(level)
+            val hp = Math.round(8800 * mult).toInt()
+            val atk = Math.round(3000 * mult).toInt()
+            val def = Math.round(2000 * mult).toInt()
+            return Hero(
+                id = "loki",
+                name = "Loki",
+                title = "God of Mischief & Deception",
+                currentHp = hp,
+                maxHp = hp,
+                baseAttack = atk,
+                baseDefense = def,
+                portraitResId = R.drawable.img_enemy_hero,
+                level = level
+            )
+        }
+
+        fun createMedusa(level: Int = 1): Hero {
+            val mult = HeroProgressionConfig.getStatMultiplier(level)
+            val hp = Math.round(9200 * mult).toInt()
+            val atk = Math.round(2600 * mult).toInt()
+            val def = Math.round(2400 * mult).toInt()
+            return Hero(
+                id = "medusa",
+                name = "Medusa",
+                title = "Gorgon Queen",
+                currentHp = hp,
+                maxHp = hp,
+                baseAttack = atk,
+                baseDefense = def,
+                portraitResId = R.drawable.img_enemy_hero,
+                level = level
+            )
+        }
+
+        fun createAnubis(level: Int = 1): Hero {
+            val mult = HeroProgressionConfig.getStatMultiplier(level)
+            val hp = Math.round(9600 * mult).toInt()
+            val atk = Math.round(2900 * mult).toInt()
+            val def = Math.round(2500 * mult).toInt()
+            return Hero(
+                id = "anubis",
+                name = "Anubis",
+                title = "Lord of the Sacred Land & Duat",
+                currentHp = hp,
+                maxHp = hp,
+                baseAttack = atk,
+                baseDefense = def,
+                portraitResId = R.drawable.img_enemy_hero,
+                level = level
+            )
+        }
     }
 }

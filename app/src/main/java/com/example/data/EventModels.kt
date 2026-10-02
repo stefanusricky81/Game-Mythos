@@ -65,6 +65,42 @@ data class MythosNotification(
 object EventCatalog {
     fun getDefaultEvents(): List<MythosEvent> = listOf(
         MythosEvent(
+            eventId = "event_wrath_of_olympus",
+            title = "WRATH OF OLYMPUS",
+            description = "Olympus is under siege! Conquer the titan raid stages and reap bountiful gold, shards, and event tokens.",
+            startDate = "2026-09-20",
+            endDate = "2026-10-15",
+            bannerResId = R.drawable.img_battlefield_bg,
+            eventType = EventType.RAID_BOSS,
+            rewardSummary = "Gold • Card Shards • Hero Shards • Event Tokens",
+            participationRequirement = "Player Level 3+ • All Champions",
+            isActive = true
+        ),
+        MythosEvent(
+            eventId = "event_ragnarok",
+            title = "RAGNAROK",
+            description = "The Norse twilight descends! Battle in intense trial stages with increased enemy prowess.",
+            startDate = "2026-09-25",
+            endDate = "2026-10-20",
+            bannerResId = R.drawable.img_battlefield_bg,
+            eventType = EventType.OLYMPUS_TRIAL,
+            rewardSummary = "Event Currency • Exclusive Cards • Hero Shards",
+            participationRequirement = "Player Level 5+",
+            isActive = true
+        ),
+        MythosEvent(
+            eventId = "event_judgment_of_anubis",
+            title = "JUDGMENT OF ANUBIS",
+            description = "Weigh your heart against the feather of Ma'at in ancient Egyptian trial chambers.",
+            startDate = "2026-10-01",
+            endDate = "2026-10-25",
+            bannerResId = R.drawable.img_battlefield_bg,
+            eventType = EventType.SEASON_EXPEDITION,
+            rewardSummary = "Event Currency • Gold • Cards • Shards",
+            participationRequirement = "Player Level 1+",
+            isActive = true
+        ),
+        MythosEvent(
             eventId = "event_typhon_raid",
             title = "WRATH OF TYPHON",
             description = "The ancient storm titan awakens in Tartarus! Join forces with your Alliance to challenge the behemoth.",

@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.CardCatalog
+import com.example.data.CardDefinition
 import com.example.data.CardRarity
 import com.example.data.HeroCatalog
 import com.example.data.PlayerProgressionConfig
@@ -54,8 +55,8 @@ fun PlayerProfileScreen(
         HeroCatalog.findHero(economyState.selectedHeroId) ?: HeroCatalog.HERCULES
     }
 
-    val highestRarity = remember(economyState.ownedCardIds) {
-        val ownedCards = economyState.ownedCardIds.mapNotNull { CardCatalog.findDefinition(it) }
+    val highestRarity: CardRarity = remember(economyState.ownedCardIds) {
+        val ownedCards: List<CardDefinition> = economyState.ownedCardIds.mapNotNull { CardCatalog.findDefinition(it) }
         when {
             ownedCards.any { it.rarity == CardRarity.MYTHIC } -> CardRarity.MYTHIC
             ownedCards.any { it.rarity == CardRarity.LEGENDARY } -> CardRarity.LEGENDARY
@@ -419,6 +420,63 @@ fun PlayerProfileScreen(
                                 }
                             }
                         }
+                    }
+                }
+
+                // Arena & Competitive Record (Phase 11 Requirement #17)
+                Text(
+                    text = "ARENA & COMPETITIVE RECORD",
+                    style = MythosTypography.RarityLabel.copy(fontSize = 12.sp),
+                    color = MythosTokens.PrimaryGold
+                )
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, economyState.arenaTier.color, RoundedCornerShape(12.dp))
+                        .testTag("profile_arena_record_card"),
+                    colors = CardDefaults.cardColors(containerColor = MythosTokens.Panel)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        StatRow(
+                            icon = Icons.Default.EmojiEvents,
+                            title = "Arena Rank Tier",
+                            value = "${economyState.arenaTier.badgeSymbol} ${economyState.arenaTier.tierName}"
+                        )
+                        HorizontalDivider(color = MythosTokens.PanelBorder)
+
+                        StatRow(
+                            icon = Icons.Default.Leaderboard,
+                            title = "Arena Rating",
+                            value = "${numberFormat.format(economyState.arenaRating)} ELO (Peak: ${numberFormat.format(economyState.arenaPeakRating)})"
+                        )
+                        HorizontalDivider(color = MythosTokens.PanelBorder)
+
+                        StatRow(
+                            icon = Icons.Default.SportsMartialArts,
+                            title = "Arena Record",
+                            value = "${economyState.arenaWins}W - ${economyState.arenaLosses}L"
+                        )
+                        HorizontalDivider(color = MythosTokens.PanelBorder)
+
+                        StatRow(
+                            icon = Icons.Default.Percent,
+                            title = "Arena Win Rate",
+                            value = String.format(Locale.US, "%.1f%%", economyState.arenaWinRate)
+                        )
+                        HorizontalDivider(color = MythosTokens.PanelBorder)
+
+                        StatRow(
+                            icon = Icons.Default.Whatshot,
+                            title = "Win Streak",
+                            value = "${economyState.arenaCurrentStreak} (Highest: ${economyState.arenaHighestStreak})"
+                        )
                     }
                 }
 

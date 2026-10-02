@@ -43,6 +43,7 @@ object MythosTokens {
     val HealthGreen = Color(0xFF10B981)
     val Warning = Color(0xFFF59E0B)
     val Damage = Color(0xFFEF4444)
+    val Error = Color(0xFFEF4444)
     val Critical = Color(0xFFFF334B)
     val Shield = Color(0xFF93C5FD)
     val Heal = Color(0xFF34D399)
@@ -115,5 +116,6 @@ object MythosTokens {
         CardType.SUMMON -> Color(0xFF10B981)
         CardType.RELIC -> Color(0xFFF59E0B)
         CardType.TRAP -> Color(0xFFEC4899)
+        CardType.GOD -> Color(0xFFFFD700)
     }
 }

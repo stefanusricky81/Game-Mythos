@@ -18,6 +18,7 @@ import com.example.ui.components.DailyRewardDialog
 import com.example.ui.screens.AllianceDetailScreen
 import com.example.ui.screens.AllianceMembersScreen
 import com.example.ui.screens.AllianceScreen
+import com.example.ui.screens.ArenaScreen
 import com.example.ui.screens.BattleScreen
 import com.example.ui.screens.CampaignScreen
 import com.example.ui.screens.CollectionScreen
@@ -25,12 +26,15 @@ import com.example.ui.screens.CreateAllianceScreen
 import com.example.ui.screens.DailyQuestScreen
 import com.example.ui.screens.DeckBuilderScreen
 import com.example.ui.screens.DeckInspectScreen
+import com.example.ui.screens.EndgameScreen
 import com.example.ui.screens.EventScreen
 import com.example.ui.screens.HeroSelectionScreen
 import com.example.ui.screens.JoinAllianceScreen
 import com.example.ui.screens.PlayerProfileScreen
+import com.example.ui.screens.RaidScreen
 import com.example.ui.screens.ShopScreen
 import com.example.ui.screens.TitleScreen
+import com.example.ui.screens.WorldBossScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.MythosDarkBg
 import com.example.viewmodel.BattleViewModel
@@ -51,7 +55,11 @@ enum class MythosScreen {
     JOIN_ALLIANCE,
     ALLIANCE_DETAIL,
     ALLIANCE_MEMBERS,
-    EVENTS
+    EVENTS,
+    ENDGAME,
+    WORLD_BOSS,
+    RAID,
+    ARENA
 }
 
 class MainActivity : ComponentActivity() {
@@ -80,15 +88,31 @@ class MainActivity : ComponentActivity() {
                 var currentScreen by remember { mutableStateOf(MythosScreen.TITLE) }
                 var focusedDeckBuilderCardId by remember { mutableStateOf<String?>(null) }
                 var showDailyRewardDialogInQuests by remember { mutableStateOf(false) }
+                var activeRaidId by remember { mutableStateOf("raid_olympus") }
+                var activeWorldBossId by remember { mutableStateOf("world_boss_kronos") }
 
                 BackHandler(enabled = currentScreen != MythosScreen.TITLE) {
                     currentScreen = when (currentScreen) {
                         MythosScreen.DECK_BUILDER -> MythosScreen.COLLECTION
-                        MythosScreen.BATTLE -> if (battleViewModel.activeEncounterConfig != null) MythosScreen.CAMPAIGN else MythosScreen.TITLE
+                        MythosScreen.BATTLE -> {
+                            val encounter = battleViewModel.activeEncounterConfig
+                            when {
+                                encounter?.isArenaMatch == true -> MythosScreen.ARENA
+                                encounter?.isWorldBoss == true -> MythosScreen.WORLD_BOSS
+                                encounter?.isRaid == true -> MythosScreen.RAID
+                                encounter?.isTrial == true -> MythosScreen.ENDGAME
+                                encounter != null -> MythosScreen.CAMPAIGN
+                                else -> MythosScreen.TITLE
+                            }
+                        }
                         MythosScreen.CREATE_ALLIANCE,
                         MythosScreen.JOIN_ALLIANCE,
                         MythosScreen.ALLIANCE_DETAIL,
                         MythosScreen.ALLIANCE_MEMBERS -> MythosScreen.ALLIANCE
+                        MythosScreen.WORLD_BOSS,
+                        MythosScreen.RAID -> MythosScreen.ENDGAME
+                        MythosScreen.ARENA,
+                        MythosScreen.ENDGAME -> MythosScreen.TITLE
                         else -> MythosScreen.TITLE
                     }
                 }
@@ -134,6 +158,12 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onOpenEvents = {
                                     currentScreen = MythosScreen.EVENTS
+                                },
+                                onOpenEndgame = {
+                                    currentScreen = MythosScreen.ENDGAME
+                                },
+                                onOpenArena = {
+                                    currentScreen = MythosScreen.ARENA
                                 }
                             )
                         }
@@ -159,10 +189,13 @@ class MainActivity : ComponentActivity() {
                             BattleScreen(
                                 viewModel = battleViewModel,
                                 onNavigateBack = {
-                                    currentScreen = if (battleViewModel.activeEncounterConfig != null) {
-                                        MythosScreen.CAMPAIGN
-                                    } else {
-                                        MythosScreen.TITLE
+                                    val encounter = battleViewModel.activeEncounterConfig
+                                    currentScreen = when {
+                                        encounter?.isWorldBoss == true -> MythosScreen.WORLD_BOSS
+                                        encounter?.isRaid == true -> MythosScreen.RAID
+                                        encounter?.isTrial == true -> MythosScreen.ENDGAME
+                                        encounter != null -> MythosScreen.CAMPAIGN
+                                        else -> MythosScreen.TITLE
                                     }
                                 },
                                 onOpenDeckBuilder = {
@@ -319,10 +352,66 @@ class MainActivity : ComponentActivity() {
                                             currentScreen = MythosScreen.CAMPAIGN
                                         }
                                         com.example.data.EventType.RAID_BOSS -> {
-                                            battleViewModel.startNewBattle()
-                                            currentScreen = MythosScreen.BATTLE
+                                            currentScreen = MythosScreen.ENDGAME
                                         }
                                     }
+                                }
+                            )
+                        }
+                        MythosScreen.ENDGAME -> {
+                            EndgameScreen(
+                                onNavigateBack = {
+                                    currentScreen = MythosScreen.TITLE
+                                },
+                                onOpenWorldBoss = { bossId ->
+                                    activeWorldBossId = bossId
+                                    currentScreen = MythosScreen.WORLD_BOSS
+                                },
+                                onOpenRaid = { raidId ->
+                                    activeRaidId = raidId
+                                    currentScreen = MythosScreen.RAID
+                                },
+                                onStartTrialBattle = { config ->
+                                    battleViewModel.startNewBattle(encounterConfig = config)
+                                    currentScreen = MythosScreen.BATTLE
+                                },
+                                onOpenEvents = {
+                                    currentScreen = MythosScreen.EVENTS
+                                }
+                            )
+                        }
+                        MythosScreen.WORLD_BOSS -> {
+                            WorldBossScreen(
+                                bossId = activeWorldBossId,
+                                onNavigateBack = {
+                                    currentScreen = MythosScreen.ENDGAME
+                                },
+                                onEnterBossBattle = { config ->
+                                    battleViewModel.startNewBattle(encounterConfig = config)
+                                    currentScreen = MythosScreen.BATTLE
+                                }
+                            )
+                        }
+                        MythosScreen.RAID -> {
+                            RaidScreen(
+                                raidId = activeRaidId,
+                                onNavigateBack = {
+                                    currentScreen = MythosScreen.ENDGAME
+                                },
+                                onStartRaidStageBattle = { config ->
+                                    battleViewModel.startNewBattle(encounterConfig = config)
+                                    currentScreen = MythosScreen.BATTLE
+                                }
+                            )
+                        }
+                        MythosScreen.ARENA -> {
+                            ArenaScreen(
+                                onNavigateBack = {
+                                    currentScreen = MythosScreen.TITLE
+                                },
+                                onStartArenaBattle = { config ->
+                                    battleViewModel.startNewBattle(encounterConfig = config)
+                                    currentScreen = MythosScreen.BATTLE
                                 }
                             )
                         }

@@ -125,7 +125,17 @@ data class BattleEncounterConfig(
     val replayHeroXp: Int = 250,
     val firstClearHeroShards: Int = 10,
     val replayHeroShards: Int = 0,
-    val firstClearHeroShardHeroId: String = HerculesIdentity.HERO_ID
+    val firstClearHeroShardHeroId: String = HerculesIdentity.HERO_ID,
+    val isWorldBoss: Boolean = false,
+    val worldBossId: String? = null,
+    val isRaid: Boolean = false,
+    val raidId: String? = null,
+    val isTrial: Boolean = false,
+    val trialStageId: String? = null,
+    val endgameDifficulty: EndgameDifficulty = EndgameDifficulty.NORMAL,
+    val eventTokensReward: Int = 0,
+    val isArenaMatch: Boolean = false,
+    val arenaOpponent: ArenaOpponent? = null
 )
 
 /**
@@ -329,7 +339,13 @@ object CampaignCatalog {
         stages = WORLD_1_STAGES
     )
 
-    val ALL_WORLDS: List<CampaignWorld> = listOf(WORLD_1)
+    val ALL_WORLDS: List<CampaignWorld> = listOf(
+        WORLD_1,
+        CampaignCatalogExpansion.WORLD_2,
+        CampaignCatalogExpansion.WORLD_3,
+        CampaignCatalogExpansion.WORLD_4,
+        CampaignCatalogExpansion.WORLD_5
+    )
 
     fun findStage(stageId: String): CampaignStage? {
         return ALL_WORLDS.flatMap { it.stages }.find { it.stageId == stageId }

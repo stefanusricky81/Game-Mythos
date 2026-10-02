@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,16 +23,18 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
-import com.example.data.EventCatalog
-import com.example.data.EventType
-import com.example.data.MythosDateUtil
-import com.example.data.MythosEvent
+import com.example.data.*
 import com.example.monetization.PlayerEconomyRepository
+import com.example.ui.components.MythosButton
+import com.example.ui.components.MythosButtonStyle
 import com.example.ui.theme.MythosTokens
 import com.example.ui.theme.MythosTypography
+import java.text.NumberFormat
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,7 +47,10 @@ fun EventScreen(
     val events = remember(economyState.activeEvents) {
         if (economyState.activeEvents.isNotEmpty()) economyState.activeEvents else EventCatalog.getDefaultEvents()
     }
+    var currentMainTab by remember { mutableStateOf("EVENTS") } // "EVENTS" or "SHOP"
     var selectedFilter by remember { mutableStateOf("ALL") }
+    var shopFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
 
     val filteredEvents = remember(events, selectedFilter) {
         when (selectedFilter) {
@@ -73,7 +79,7 @@ fun EventScreen(
                 TopAppBar(
                     title = {
                         Text(
-                            text = "LIMITED-TIME EVENTS",
+                            text = if (currentMainTab == "EVENTS") "LIMITED-TIME EVENTS" else "EVENT REWARD SHOP",
                             style = MythosTypography.GameTitle.copy(fontSize = 18.sp),
                             color = MythosTokens.PrimaryGold
                         )
@@ -90,6 +96,26 @@ fun EventScreen(
                             )
                         }
                     },
+                    actions = {
+                        // Event Tokens Balance Display (Phase 10 Section 11)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MythosTokens.PanelElevated)
+                                .border(1.dp, MythosTokens.PrimaryGold.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(text = "🪙", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "${numberFormat.format(economyState.eventTokens)} TOKENS",
+                                style = MythosTypography.RarityLabel.copy(fontSize = 11.sp),
+                                color = MythosTokens.PrimaryGold
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MythosTokens.Panel.copy(alpha = 0.95f)
                     )
@@ -103,45 +129,183 @@ fun EventScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Filter Tabs
+                // Main Switcher: Events vs Reward Shop
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf("ALL", "ACTIVE", "UPCOMING").forEach { filter ->
-                        val isSelected = selectedFilter == filter
-                        Button(
-                            onClick = { selectedFilter = filter },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(36.dp)
-                                .testTag("event_filter_${filter.lowercase()}"),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isSelected) MythosTokens.PrimaryGold else MythosTokens.PanelElevated,
-                                contentColor = if (isSelected) Color.Black else MythosTokens.TextMuted
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(0.dp)
-                        ) {
-                            Text(
-                                text = filter,
-                                style = MythosTypography.RarityLabel.copy(fontSize = 11.sp),
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                    Button(
+                        onClick = { currentMainTab = "EVENTS" },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .testTag("tab_events_list"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (currentMainTab == "EVENTS") MythosTokens.PrimaryGold else MythosTokens.PanelElevated,
+                            contentColor = if (currentMainTab == "EVENTS") Color.Black else MythosTokens.TextMuted
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "LIVE EVENTS",
+                            style = MythosTypography.RarityLabel,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Button(
+                        onClick = { currentMainTab = "SHOP" },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .testTag("tab_event_reward_shop"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (currentMainTab == "SHOP") MythosTokens.PrimaryGold else MythosTokens.PanelElevated,
+                            contentColor = if (currentMainTab == "SHOP") Color.Black else MythosTokens.TextMuted
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "REWARD SHOP",
+                            style = MythosTypography.RarityLabel,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 
-                // Event List
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    items(filteredEvents) { event ->
-                        EventCard(
-                            event = event,
-                            onParticipate = { onParticipateEvent(event) }
+                if (currentMainTab == "EVENTS") {
+                    // Filter Tabs
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("ALL", "ACTIVE", "UPCOMING").forEach { filter ->
+                            val isSelected = selectedFilter == filter
+                            Button(
+                                onClick = { selectedFilter = filter },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
+                                    .testTag("event_filter_${filter.lowercase()}"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelected) MythosTokens.PrimaryGold else MythosTokens.PanelElevated,
+                                    contentColor = if (isSelected) Color.Black else MythosTokens.TextMuted
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(
+                                    text = filter,
+                                    style = MythosTypography.RarityLabel.copy(fontSize = 10.sp),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    // Event List
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        items(filteredEvents) { event ->
+                            EventCard(
+                                event = event,
+                                onParticipate = { onParticipateEvent(event) }
+                            )
+                        }
+                    }
+                } else {
+                    // Event Reward Shop (Phase 10 Section 12)
+                    shopFeedbackMessage?.let { msg: String ->
+                        Text(
+                            text = msg,
+                            style = MythosTypography.CardDescription,
+                            color = MythosTokens.PrimaryGold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
                         )
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        item {
+                            Text(
+                                text = "EXCHANGE EVENT TOKENS FOR EXCLUSIVE LOOT",
+                                style = MythosTypography.RarityLabel,
+                                color = MythosTokens.PrimaryGold
+                            )
+                        }
+
+                        items(EndgameCatalog.DEFAULT_EVENT_SHOP_ITEMS) { item ->
+                            val purchased = economyState.eventShopPurchases[item.itemId] ?: 0
+                            val canAfford = economyState.eventTokens >= item.tokenPrice
+                            val isSoldOut = purchased >= item.purchaseLimit
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .border(1.dp, MythosTokens.PanelBorder, RoundedCornerShape(12.dp))
+                                    .testTag("event_shop_item_${item.itemId}"),
+                                colors = CardDefaults.cardColors(containerColor = MythosTokens.Panel)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.name.uppercase(),
+                                            style = MythosTypography.CardName.copy(fontSize = 13.sp),
+                                            color = if (isSoldOut) MythosTokens.TextMuted else MythosTokens.PrimaryGold
+                                        )
+                                        Text(
+                                            text = item.description,
+                                            style = MythosTypography.CardDescription.copy(fontSize = 10.sp),
+                                            color = MythosTokens.TextMuted
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Cost: ${item.tokenPrice} Tokens • Stock: $purchased/${item.purchaseLimit}",
+                                            style = MythosTypography.HeroTitle.copy(fontSize = 11.sp),
+                                            color = if (canAfford) MythosTokens.DivineBlueLight else MythosTokens.Error
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    Button(
+                                        onClick = {
+                                            val result = PlayerEconomyRepository.instance.purchaseEventShopItem(item.itemId)
+                                            shopFeedbackMessage = if (result.isSuccess) {
+                                                "Successfully claimed ${item.name}!"
+                                            } else {
+                                                result.exceptionOrNull()?.message
+                                            }
+                                        },
+                                        enabled = canAfford && !isSoldOut,
+                                        modifier = Modifier.testTag("buy_event_item_${item.itemId}"),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MythosTokens.PrimaryGold,
+                                            disabledContainerColor = MythosTokens.PanelBorder
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isSoldOut) "MAX" else "CLAIM",
+                                            style = MythosTypography.RarityLabel.copy(fontSize = 11.sp),
+                                            color = if (canAfford && !isSoldOut) Color.Black else MythosTokens.TextMuted
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -204,20 +368,13 @@ private fun EventCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(
-                                when (event.eventType) {
-                                    EventType.RAID_BOSS -> MythosTokens.Damage.copy(alpha = 0.85f)
-                                    EventType.DOUBLE_GOLD -> MythosTokens.PrimaryGold.copy(alpha = 0.85f)
-                                    EventType.OLYMPUS_TRIAL -> MythosTokens.DivineBlue.copy(alpha = 0.85f)
-                                    EventType.SEASON_EXPEDITION -> MythosTokens.Legendary.copy(alpha = 0.85f)
-                                }
-                            )
+                            .background(if (isActive) MythosTokens.Success.copy(alpha = 0.9f) else MythosTokens.PanelBorder)
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = event.eventType.displayTag,
-                            style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
-                            color = if (event.eventType == EventType.DOUBLE_GOLD) Color.Black else Color.White,
+                            text = if (isActive) "● LIVE NOW" else "○ UPCOMING",
+                            style = MythosTypography.RarityLabel.copy(fontSize = 10.sp),
+                            color = Color.White,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -225,110 +382,113 @@ private fun EventCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(
-                                if (isActive) MythosTokens.Success.copy(alpha = 0.25f)
-                                else Color(0xFF261F33)
-                            )
-                            .border(
-                                1.dp,
-                                if (isActive) MythosTokens.Success else MythosTokens.PanelBorder,
-                                RoundedCornerShape(6.dp)
-                            )
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                            .background(MythosTokens.PanelElevated)
+                            .border(1.dp, MythosTokens.PanelBorder, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = if (isActive) "● LIVE NOW" else "UPCOMING",
-                            style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
-                            color = if (isActive) MythosTokens.Success else MythosTokens.TextMuted,
-                            fontWeight = FontWeight.Bold
+                            text = event.eventType.displayTag,
+                            style = MythosTypography.RarityLabel.copy(fontSize = 10.sp),
+                            color = MythosTokens.DivineBlueLight
                         )
                     }
                 }
             }
 
-            // Event Details Section
+            // Event Details
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(14.dp)
             ) {
                 Text(
                     text = event.title,
-                    style = MythosTypography.HeroName.copy(fontSize = 17.sp),
-                    color = Color.White
+                    style = MythosTypography.HeroName.copy(fontSize = 18.sp),
+                    color = MythosTokens.PrimaryGold
                 )
+
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
                     text = event.description,
-                    style = MythosTypography.CardDescription.copy(fontSize = 12.sp),
-                    color = Color(0xFFD4CCE6)
+                    style = MythosTypography.CardDescription,
+                    color = MythosTokens.TextMuted
                 )
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Date & Requirements
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "📅 ", fontSize = 12.sp)
+                        Text(
+                            text = "${event.startDate} — ${event.endDate}",
+                            style = MythosTypography.CardDescription.copy(fontSize = 11.sp),
+                            color = MythosTokens.DivineBlueLight
+                        )
+                    }
                     Text(
-                        text = "📅 ${event.startDate} to ${event.endDate}",
-                        style = MythosTypography.CardDescription.copy(fontSize = 10.sp),
-                        color = MythosTokens.SecondaryGold
-                    )
-                    Text(
-                        text = "🎯 ${event.participationRequirement}",
-                        style = MythosTypography.CardDescription.copy(fontSize = 10.sp),
+                        text = event.participationRequirement,
+                        style = MythosTypography.CardDescription.copy(fontSize = 11.sp),
                         color = MythosTokens.TextMuted
                     )
                 }
 
-                // Rewards Banner
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Rewards pill
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(MythosTokens.PanelElevated)
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                        .border(0.5.dp, MythosTokens.PrimaryGold.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(text = "🎁", fontSize = 16.sp)
-                        Column {
-                            Text(
-                                text = "EVENT REWARDS",
-                                style = MythosTypography.RarityLabel.copy(fontSize = 9.sp),
-                                color = MythosTokens.PrimaryGold
-                            )
-                            Text(
-                                text = event.rewardSummary,
-                                style = MythosTypography.CardDescription.copy(fontSize = 11.sp),
-                                color = Color.White
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "🎁 ", fontSize = 12.sp)
+                        Text(
+                            text = "Rewards: ${event.rewardSummary}",
+                            style = MythosTypography.CardName.copy(fontSize = 11.sp),
+                            color = MythosTokens.PrimaryGold
+                        )
                     }
                 }
 
-                // CTA Button
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Participation CTA Button
                 Button(
                     onClick = onParticipate,
-                    enabled = isActive,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(38.dp)
-                        .testTag("participate_event_${event.eventId}"),
+                        .height(44.dp)
+                        .testTag("event_participate_${event.eventId}"),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MythosTokens.PrimaryGold,
-                        contentColor = Color.Black
+                        containerColor = if (isActive) MythosTokens.PrimaryGold else MythosTokens.PanelElevated,
+                        contentColor = if (isActive) Color.Black else MythosTokens.TextMuted
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text(
-                        text = if (isActive) "ENTER EVENT" else "STARTS SOON",
-                        style = MythosTypography.RarityLabel.copy(fontSize = 11.sp),
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isActive) Icons.Default.PlayArrow else Icons.Default.Lock,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isActive) "ENTER EVENT STAGES" else "LOCKED (STARTS ${event.startDate})",
+                            style = MythosTypography.RarityLabel.copy(fontSize = 11.sp),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }

@@ -28,7 +28,7 @@ class AllianceAndRetentionSystemTest {
         repository = PlayerEconomyRepository()
         repository.initPersistence(context)
         // Ensure starting gold is sufficient for creation tests
-        repository.debugAddGold(10_000)
+        repository.addGold(10_000)
     }
 
     @Test
@@ -245,8 +245,9 @@ class AllianceAndRetentionSystemTest {
         repository.setLoginStreakForTesting(4, "2026-09-20")
         assertEquals(4, repository.economyState.value.playerProgress.loginStreak)
 
-        // Consecutive day advances streak
-        repository.checkDailyReset("2026-09-21")
+        // Consecutive day advances streak upon claiming daily login reward
+        val claimResult = repository.claimDailyLoginReward("2026-09-21")
+        assertTrue("Claiming on consecutive day should succeed", claimResult.isSuccess)
         assertEquals("Consecutive day should increase login streak to 5", 5, repository.economyState.value.playerProgress.loginStreak)
         assertTrue(repository.economyState.value.playerProgress.highestLoginStreak >= 5)
 

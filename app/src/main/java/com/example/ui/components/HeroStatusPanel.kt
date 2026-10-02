@@ -308,8 +308,23 @@ fun HeroStatusPanel(
                     if (hero.hasThunderstoneRelic) {
                         HeroStatusChip(label = "Thunderstone", color = Color(0xFFA855F7))
                     }
-                    if (hero.poisonTurnsRemaining > 0) {
+                    if (hero.statusEffects.isEmpty() && hero.poisonTurnsRemaining > 0) {
                         HeroStatusChip(label = "POISON ×${hero.poisonTurnsRemaining}", color = MythosTokens.Poison)
+                    }
+                    hero.statusEffects.filter { !it.isExpired }.forEach { status ->
+                        val chipColor = when (status.type) {
+                            com.example.combat.StatusEffectType.POISON -> MythosTokens.Poison
+                            com.example.combat.StatusEffectType.BURN -> Color(0xFFF97316)
+                            com.example.combat.StatusEffectType.STUN -> Color(0xFFEAB308)
+                            com.example.combat.StatusEffectType.VULNERABLE -> Color(0xFFEF4444)
+                            com.example.combat.StatusEffectType.WEAKEN -> Color(0xFF94A3B8)
+                            com.example.combat.StatusEffectType.SHIELD -> MythosTokens.DivineBlue
+                            com.example.combat.StatusEffectType.REGENERATION -> MythosTokens.Success
+                        }
+                        HeroStatusChip(
+                            label = "${status.type.iconSymbol} ${status.displayName} (${status.durationTurns}t)",
+                            color = chipColor
+                        )
                     }
                 }
             }

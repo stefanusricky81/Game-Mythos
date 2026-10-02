@@ -99,6 +99,17 @@ fun DeckBuilderScreen(
         workingCardIds.groupingBy { it }.eachCount()
     }
 
+    val workingCards = remember(workingCardIds, economyState.cardLevels) {
+        workingCardIds.map { cardId ->
+            val level = economyState.cardLevels[cardId] ?: 1
+            CardCatalog.getCard(cardId, level)
+        }
+    }
+
+    val deckAnalysis = remember(workingCards, heroDef) {
+        SynergyCatalog.analyzeDeck(workingCards, heroDef)
+    }
+
     // Candidate cards from authoritative CardCatalog
     val candidateCards = remember(selectedFilterType, economyState.ownedCardIds) {
         CardCatalog.ALL_CARDS.filter { def ->
@@ -343,6 +354,95 @@ fun DeckBuilderScreen(
                                     else MythosTokens.Damage,
                                     fontWeight = FontWeight.SemiBold
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // DECK ANALYSIS SECTION (Requirements #9, #10)
+            Surface(
+                color = MythosTokens.Panel,
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(0.8.dp, MythosTokens.SecondaryGold.copy(alpha = 0.4f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .testTag("deck_analysis_card")
+            ) {
+                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "DECK ANALYSIS",
+                            style = MythosTypography.RarityLabel.copy(fontSize = 10.sp),
+                            color = MythosTokens.PrimaryGold,
+                            letterSpacing = 1.sp
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = "Power: ${java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(deckAnalysis.deckPower)}",
+                                style = MythosTypography.StatNumber.copy(fontSize = 11.sp),
+                                color = MythosTokens.PrimaryGold
+                            )
+                            Text(
+                                text = "Avg Energy: ${deckAnalysis.averageEnergyCost}",
+                                style = MythosTypography.StatNumber.copy(fontSize = 11.sp),
+                                color = MythosTokens.DivineBlueLight
+                            )
+                        }
+                    }
+
+                    // Distribution Pills
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        CardType.values().forEach { type ->
+                            val count = deckAnalysis.typeDistribution[type] ?: 0
+                            if (count > 0) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MythosTokens.getCardTypeColor(type).copy(alpha = 0.2f),
+                                    border = BorderStroke(0.5.dp, MythosTokens.getCardTypeColor(type))
+                                ) {
+                                    Text(
+                                        text = "${type.label}: $count",
+                                        style = MythosTypography.CardDescription.copy(fontSize = 9.sp),
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Active Synergies
+                    if (deckAnalysis.activeSynergies.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            deckAnalysis.activeSynergies.forEach { syn ->
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MythosTokens.PrimaryGold.copy(alpha = 0.18f),
+                                    border = BorderStroke(0.5.dp, MythosTokens.PrimaryGold)
+                                ) {
+                                    Text(
+                                        text = "${syn.iconSymbol} ${syn.name}",
+                                        style = MythosTypography.CardDescription.copy(fontSize = 9.sp),
+                                        color = MythosTokens.PrimaryGold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }

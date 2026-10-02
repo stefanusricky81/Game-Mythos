@@ -105,7 +105,7 @@ object CardUpgradeConfig {
  */
 object CardCatalog {
 
-    val ALL_CARDS: List<CardDefinition> = listOf(
+    val BASE_CARDS: List<CardDefinition> = listOf(
         // 1. Olympian Guard (Common Defense)
         CardDefinition(
             id = "c_olympian_guard",
@@ -467,6 +467,8 @@ object CardCatalog {
             )
         )
     )
+
+    val ALL_CARDS: List<CardDefinition> = BASE_CARDS + CardCatalogExpansion.NEW_CARDS
 
     private val cardMap: Map<String, CardDefinition> = ALL_CARDS.associateBy { it.id }
 

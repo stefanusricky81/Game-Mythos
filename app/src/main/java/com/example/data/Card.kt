@@ -6,7 +6,8 @@ enum class CardType(val label: String) {
     SPELL("Spell"),
     SUMMON("Summon"),
     RELIC("Relic"),
-    TRAP("Trap")
+    TRAP("Trap"),
+    GOD("God")
 }
 
 enum class CardRarity(val label: String) {
@@ -32,7 +33,20 @@ data class CardEffect(
     val summonCounterDamage: Int = 0,
     val bonusDamageAgainstShield: Int = 0,
     val turnStartLightningDamage: Int = 0,
-    val turnStartMythPowerGain: Int = 0
+    val turnStartMythPowerGain: Int = 0,
+    val burnDamagePerTurn: Int = 0,
+    val burnTurns: Int = 0,
+    val stunTurns: Int = 0,
+    val vulnerableTurns: Int = 0,
+    val weakenTurns: Int = 0,
+    val drawCardsCount: Int = 0,
+    val energyGain: Int = 0,
+    val lifestealPercent: Int = 0,
+    val trueDamage: Int = 0,
+    val isCleanse: Boolean = false,
+    val executeThresholdPercent: Int = 0,
+    val regenerationAmount: Int = 0,
+    val regenerationTurns: Int = 0
 )
 
 /**
@@ -58,142 +72,9 @@ data class Card(
 
 object DeckFactory {
     fun createPrototypeDeck(): List<Card> {
-        return listOf(
-            // Sample Card 1 (Requirement #8): Olympian Guard
-            Card(
-                id = "c_olympian_guard",
-                name = "Olympian Guard",
-                cost = 2,
-                type = CardType.DEFENSE,
-                rarity = CardRarity.COMMON,
-                effectDescription = "Gain 1,200 Shield.",
-                loreQuote = "Protected by the bronze aegis of ancient champions.",
-                effect = CardEffect(shield = 1200),
-                iconKey = "shield"
-            ),
-            // Sample Card 2 (Requirement #8): Titan's Wrath
-            Card(
-                id = "c_titans_wrath",
-                name = "Titan's Wrath",
-                cost = 5,
-                type = CardType.ATTACK,
-                rarity = CardRarity.LEGENDARY,
-                effectDescription = "Deal 3,600 physical damage.",
-                loreQuote = "Strength that shattered the foundations of Mount Othrys.",
-                effect = CardEffect(damage = 3600),
-                iconKey = "crush",
-                artworkResId = HerculesIdentity.assets.cardArt.resolveResId()
-            ),
-            // Sample Card 3 (Requirement #8): Nectar of the Gods
-            Card(
-                id = "c_nectar_gods",
-                name = "Nectar of the Gods",
-                cost = 2,
-                type = CardType.SPELL,
-                rarity = CardRarity.RARE,
-                effectDescription = "Restore 1,500 HP and cleanse negative effects.",
-                loreQuote = "Golden ambrosia brewed atop Olympus, granting renewed vigor.",
-                effect = CardEffect(healAmount = 1500),
-                iconKey = "chalice"
-            ),
-            Card(
-                id = "c_power_strike",
-                name = "Power Strike",
-                cost = 2,
-                type = CardType.ATTACK,
-                rarity = CardRarity.COMMON,
-                effectDescription = "Deal 1,500 physical damage to the enemy.",
-                loreQuote = "A single blow forged through celestial labors.",
-                effect = CardEffect(damage = 1500),
-                iconKey = "strike"
-            ),
-            Card(
-                id = "c_spartan_phalanx",
-                name = "Spartan Phalanx",
-                cost = 4,
-                type = CardType.SUMMON,
-                rarity = CardRarity.EPIC,
-                effectDescription = "Summon Phalanx guard: Grants 2,000 Shield and 800 retaliation.",
-                loreQuote = "An unbreakable line of warrior brothers stood shoulder-to-shoulder.",
-                effect = CardEffect(
-                    summonShield = 2000,
-                    summonCounterDamage = 800
-                ),
-                iconKey = "spears"
-            ),
-            Card(
-                id = "c_heroic_rage",
-                name = "Heroic Rage",
-                cost = 3,
-                type = CardType.SPELL,
-                rarity = CardRarity.UNCOMMON,
-                effectDescription = "Hercules gains +20% Attack for 1 turn and +20 Myth Power.",
-                loreQuote = "The blood of Zeus surges with unrelenting fury.",
-                effect = CardEffect(
-                    attackBuffPercent = 20,
-                    attackBuffTurns = 1,
-                    mythPowerGain = 20
-                ),
-                iconKey = "fire"
-            ),
-            Card(
-                id = "c_hydra_blade",
-                name = "Hydra Venom Blade",
-                cost = 3,
-                type = CardType.ATTACK,
-                rarity = CardRarity.RARE,
-                effectDescription = "Deal 1,800 damage and inflict Poison (400/t for 2t).",
-                loreQuote = "Coated in the corrosive bile of the multi-headed serpent.",
-                effect = CardEffect(
-                    damage = 1800,
-                    poisonDamagePerTurn = 400,
-                    poisonTurns = 2
-                ),
-                iconKey = "poison"
-            ),
-            Card(
-                id = "c_nemean_hide",
-                name = "Nemean Lion Hide",
-                cost = 3,
-                type = CardType.RELIC,
-                rarity = CardRarity.RARE,
-                effectDescription = "Gain 800 Shield and reduce incoming damage by 15%.",
-                loreQuote = "Impervious pelt stripped from the golden beast of Nemea.",
-                effect = CardEffect(
-                    shield = 800,
-                    damageReductionPercent = 15
-                ),
-                iconKey = "armor"
-            ),
-            Card(
-                id = "c_divine_challenge",
-                name = "Divine Challenge",
-                cost = 4,
-                type = CardType.SPELL,
-                rarity = CardRarity.EPIC,
-                effectDescription = "Deal 2,500 damage (+500 bonus against active Shield).",
-                loreQuote = "Even the immortal gods cannot withstand direct defiance.",
-                effect = CardEffect(
-                    damage = 2500,
-                    bonusDamageAgainstShield = 500
-                ),
-                iconKey = "lightning"
-            ),
-            Card(
-                id = "c_zeus_thunderstone",
-                name = "Zeus's Thunderstone",
-                cost = 4,
-                type = CardType.RELIC,
-                rarity = CardRarity.MYTHIC,
-                effectDescription = "Relic: Strikes for 1,000 lightning each turn and grants +10 Myth Power.",
-                loreQuote = "A shard crystallized from the Father of Gods' sacred bolts.",
-                effect = CardEffect(
-                    turnStartLightningDamage = 1000,
-                    turnStartMythPowerGain = 10
-                ),
-                iconKey = "thunder"
-            )
-        )
+        return HeroCatalog.HERCULES.defaultDeckCardIds.map { cardId ->
+            CardCatalog.getCard(cardId)
+        }
     }
 
     fun createEnemyDeck(): List<Card> {

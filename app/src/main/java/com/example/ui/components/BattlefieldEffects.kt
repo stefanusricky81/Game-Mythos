@@ -312,6 +312,7 @@ fun CombatLogTicker(
         LogType.PASSIVE -> MythosTokens.PrimaryGold
         LogType.ULTIMATE -> MythosTokens.MythPower
         LogType.POISON -> Color(0xFFA6E838)
+        LogType.STATUS -> Color(0xFFFFB74D)
         LogType.INFO -> Color(0xFFDDD8E8)
     }
 

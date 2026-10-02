@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -10,6 +12,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -50,6 +53,12 @@ fun DeckInspectScreen(
             val level = economyState.cardLevels[cardId] ?: 1
             CardCatalog.getCard(cardId, level)
         }
+    }
+    val heroDef = remember(activeDeck.heroId) {
+        HeroCatalog.findHero(activeDeck.heroId) ?: HeroCatalog.HERCULES
+    }
+    val deckAnalysis = remember(fullDeck, heroDef) {
+        SynergyCatalog.analyzeDeck(fullDeck, heroDef)
     }
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedTypeFilter by remember { mutableStateOf<CardType?>(null) }
@@ -149,29 +158,92 @@ fun DeckInspectScreen(
             }
 
             if (selectedTab == 0) {
-                // Info Summary
-                Box(
+                // DECK ANALYSIS SECTION (Requirement #9, #10)
+                Surface(
+                    color = MythosTokens.Panel,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, MythosTokens.SecondaryGold.copy(alpha = 0.5f)),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MythosTokens.Panel)
-                        .border(1.dp, MythosTokens.SecondaryGold.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                        .padding(8.dp)
+                        .testTag("deck_inspect_analysis_card")
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            tint = MythosTokens.PrimaryGold,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Unified CardFrame system demonstrating all 6 rarity tiers and independent artwork container.",
-                            style = MythosTypography.CardDescription.copy(fontSize = 10.sp, lineHeight = 13.sp),
-                            color = MythosTokens.TextSecondary
-                        )
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "DECK ANALYSIS",
+                                style = MythosTypography.RarityLabel.copy(fontSize = 10.sp),
+                                color = MythosTokens.PrimaryGold,
+                                letterSpacing = 1.sp
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    text = "Deck Power: ${java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(deckAnalysis.deckPower)}",
+                                    style = MythosTypography.StatNumber.copy(fontSize = 11.sp),
+                                    color = MythosTokens.PrimaryGold
+                                )
+                                Text(
+                                    text = "Avg Energy: ${deckAnalysis.averageEnergyCost}",
+                                    style = MythosTypography.StatNumber.copy(fontSize = 11.sp),
+                                    color = MythosTokens.DivineBlueLight
+                                )
+                            }
+                        }
+
+                        // Distribution
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            CardType.values().forEach { type ->
+                                val count = deckAnalysis.typeDistribution[type] ?: 0
+                                if (count > 0) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = MythosTokens.getCardTypeColor(type).copy(alpha = 0.2f),
+                                        border = BorderStroke(0.5.dp, MythosTokens.getCardTypeColor(type))
+                                    ) {
+                                        Text(
+                                            text = "${type.label}: $count",
+                                            style = MythosTypography.CardDescription.copy(fontSize = 9.5.sp),
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Synergies
+                        if (deckAnalysis.activeSynergies.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                deckAnalysis.activeSynergies.forEach { syn ->
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = MythosTokens.PrimaryGold.copy(alpha = 0.18f),
+                                        border = BorderStroke(0.5.dp, MythosTokens.PrimaryGold)
+                                    ) {
+                                        Text(
+                                            text = "${syn.iconSymbol} ${syn.name}",
+                                            style = MythosTypography.CardDescription.copy(fontSize = 9.sp),
+                                            color = MythosTokens.PrimaryGold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
