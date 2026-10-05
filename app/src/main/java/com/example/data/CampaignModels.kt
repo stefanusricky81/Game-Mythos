@@ -135,7 +135,12 @@ data class BattleEncounterConfig(
     val endgameDifficulty: EndgameDifficulty = EndgameDifficulty.NORMAL,
     val eventTokensReward: Int = 0,
     val isArenaMatch: Boolean = false,
-    val arenaOpponent: ArenaOpponent? = null
+    val arenaOpponent: ArenaOpponent? = null,
+    /**
+     * Set only in ONLINE_AUTHORITATIVE mode: the server-issued Arena match / World Boss / Raid session
+     * this battle belongs to. While non-null, rewards and progress come from the server, not locally.
+     */
+    val onlineSessionId: String? = null
 )
 
 /**

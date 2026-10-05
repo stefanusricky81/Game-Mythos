@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.audio.SoundManager
+import com.example.backend.MythosBackend
 import com.example.monetization.PlayerEconomyRepository
 import com.example.ui.components.DailyRewardDialog
 import com.example.ui.screens.AllianceDetailScreen
@@ -75,6 +76,8 @@ class MainActivity : ComponentActivity() {
         PlayerEconomyRepository.instance.checkDailyReset()
         // Wire up real Google Play Billing (release builds) / keep mock billing (debug builds)
         PlayerEconomyRepository.instance.configureBilling(this)
+        // Phase 12: backend boundary (LOCAL_DEVELOPMENT unless BackendConfig.MODE says otherwise)
+        MythosBackend.initialize(this)
 
         soundManager = SoundManager(this)
 
@@ -83,6 +86,10 @@ class MainActivity : ComponentActivity() {
                 val battleViewModel: BattleViewModel = viewModel()
                 LaunchedEffect(Unit) {
                     battleViewModel.setSoundManager(soundManager)
+                }
+                LaunchedEffect(Unit) {
+                    // ONLINE_AUTHORITATIVE only: deliver queued results, apply pending server rewards, refresh state.
+                    if (MythosBackend.isOnline) MythosBackend.online.refreshAll()
                 }
 
                 var currentScreen by remember { mutableStateOf(MythosScreen.TITLE) }

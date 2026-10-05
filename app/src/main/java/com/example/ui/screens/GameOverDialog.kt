@@ -31,6 +31,7 @@ import com.example.data.BattleRewards
 import com.example.data.BattleStats
 import com.example.data.HerculesIdentity
 import com.example.data.StageVictoryResult
+import androidx.compose.ui.platform.testTag
 import com.example.ui.theme.*
 import java.text.NumberFormat
 import java.util.Locale
@@ -42,6 +43,8 @@ fun GameOverDialog(
     rewards: BattleRewards,
     campaignVictoryResult: StageVictoryResult? = null,
     arenaBattleResultSummary: ArenaBattleResultSummary? = null,
+    onlineResultMessage: String? = null,
+    isSubmittingOnlineResult: Boolean = false,
     onBattleAgain: () -> Unit,
     onGoHome: () -> Unit,
     onGoToCollection: (() -> Unit)? = null
@@ -121,6 +124,26 @@ fun GameOverDialog(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 4.dp, bottom = 10.dp)
                 )
+
+                // ONLINE_AUTHORITATIVE: explicit server / offline status (never a locally invented reward).
+                if (isSubmittingOnlineResult) {
+                    Text(
+                        text = "Submitting your result to the server...",
+                        color = Color(0xFFFFD27A),
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 8.dp).testTag("online_result_submitting")
+                    )
+                }
+                if (onlineResultMessage != null) {
+                    Text(
+                        text = onlineResultMessage,
+                        color = Color(0xFFFFD27A),
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 8.dp).testTag("online_result_message")
+                    )
+                }
 
                 // ARENA COMPETITIVE RESULT CARD (Phase 11 Requirement #12)
                 if (arenaBattleResultSummary != null) {

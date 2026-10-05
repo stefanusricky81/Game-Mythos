@@ -106,5 +106,8 @@ data class BattleUiState(
     val isBossPhase2Active: Boolean = false,
     val bossPhaseBannerText: String? = null,
     val activeHeroSynergyText: String? = null,
-    val arenaBattleResultSummary: ArenaBattleResultSummary? = null
+    val arenaBattleResultSummary: ArenaBattleResultSummary? = null,
+    /** ONLINE_AUTHORITATIVE only: explicit server/offline status of this battle's result. */
+    val onlineResultMessage: String? = null,
+    val isSubmittingOnlineResult: Boolean = false
 )

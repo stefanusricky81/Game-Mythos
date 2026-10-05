@@ -28,6 +28,9 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.Alliance
 import com.example.data.AllianceEmblems
+import com.example.backend.online.AllianceGateway
+import com.example.ui.components.rememberDisplayEconomyState
+import kotlinx.coroutines.launch
 import com.example.monetization.PlayerEconomyRepository
 import com.example.ui.components.MythosButton
 import com.example.ui.components.MythosButtonStyle
@@ -43,7 +46,8 @@ fun CreateAllianceScreen(
     onAllianceCreated: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
+    val economyState by rememberDisplayEconomyState()
+    val coroutineScope = rememberCoroutineScope()
     val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
 
     var allianceName by remember { mutableStateOf("") }
@@ -307,15 +311,17 @@ fun CreateAllianceScreen(
                     text = "FOUND ALLIANCE",
                     subtitle = if (!hasEnoughGold) "Insufficient Gold" else "Become Founding Leader",
                     onClick = {
-                        val result = PlayerEconomyRepository.instance.createAlliance(
-                            name = allianceName,
-                            emblem = selectedEmblemId,
-                            description = allianceDescription
-                        )
-                        if (result.isSuccess) {
-                            onAllianceCreated()
-                        } else {
-                            errorMessage = result.exceptionOrNull()?.message ?: "Failed to create alliance"
+                        coroutineScope.launch {
+                            val result = AllianceGateway.create(
+                                name = allianceName,
+                                emblem = selectedEmblemId,
+                                description = allianceDescription
+                            )
+                            if (result.isSuccess) {
+                                onAllianceCreated()
+                            } else {
+                                errorMessage = result.exceptionOrNull()?.message ?: "Failed to create alliance"
+                            }
                         }
                     },
                     style = MythosButtonStyle.PRIMARY,

@@ -28,7 +28,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.R
+import com.example.backend.MythosBackend
+import com.example.backend.online.BackendException
+import com.example.backend.online.OnlineBackend
 import com.example.data.*
+import com.example.ui.components.OnlineStatusBanner
+import com.example.ui.components.rememberDisplayEconomyState
+import kotlinx.coroutines.launch
 import com.example.monetization.PlayerEconomyRepository
 import com.example.ui.components.MythosButton
 import com.example.ui.components.MythosButtonStyle
@@ -45,11 +51,14 @@ fun RaidScreen(
     onStartRaidStageBattle: (BattleEncounterConfig) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
+    val economyState by rememberDisplayEconomyState()
     val raid = remember(raidId) { EndgameCatalog.findRaid(raidId) ?: EndgameCatalog.OLYMPUS_RAID }
     var selectedDifficulty by remember { mutableStateOf(raid.difficulty) }
     var selectedStageIndex by remember { mutableStateOf(0) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val isOnline = MythosBackend.isOnline
+    LaunchedEffect(Unit) { if (isOnline) MythosBackend.online.refreshAll() }
     val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     val remainingAttempts = economyState.raidDailyAttempts
     val completedStagesForRaid = economyState.raidStageProgress[raid.raidId] ?: 0
@@ -124,6 +133,8 @@ fun RaidScreen(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                OnlineStatusBanner(onRetry = { coroutineScope.launch { MythosBackend.online.refreshAll() } })
+
                 // Raid Banner & Subtitle
                 Card(
                     modifier = Modifier
@@ -301,6 +312,32 @@ fun RaidScreen(
                     text = "ENGAGE STAGE ${currentSelectedStage.stageNumber}",
                     subtitle = "Consumes 1 Daily Attempt (${remainingAttempts}/3 Left)",
                     onClick = {
+                        if (isOnline) {
+                            // The server verifies Alliance membership, stage unlocks and the 3 daily attempts,
+                            // consumes the attempt, and tells us exactly which enemy HP to fight.
+                            coroutineScope.launch {
+                                MythosBackend.online.startRaid(raid.raidId, currentSelectedStage.stageNumber, selectedDifficulty.id).fold(
+                                    onSuccess = { session ->
+                                        errorMessage = null
+                                        val base = currentSelectedStage.toBattleEncounterConfig(raidId = raid.raidId, difficulty = selectedDifficulty)
+                                        onStartRaidStageBattle(
+                                            base.copy(
+                                                enemyHero = base.enemyHero.copy(currentHp = session.enemyHp, maxHp = session.enemyHp),
+                                                rewards = BattleRewards(gold = 0, xp = 0, cardRewardName = "Decided by the server", cardRewardRarity = CardRarity.RARE),
+                                                isRaid = true,
+                                                raidId = raid.raidId,
+                                                eventTokensReward = 0,
+                                                onlineSessionId = session.sessionId
+                                            )
+                                        )
+                                    },
+                                    onFailure = { e ->
+                                        errorMessage = (e as? BackendException)?.let(OnlineBackend::userMessage) ?: e.message ?: "Could not start the raid."
+                                    }
+                                )
+                            }
+                            return@MythosButton
+                        }
                         val consumed = PlayerEconomyRepository.instance.consumeRaidAttempt()
                         if (!consumed) {
                             errorMessage = "No daily raid attempts remaining! Resets daily at midnight."

@@ -27,7 +27,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.backend.MythosBackend
+import com.example.backend.online.BackendException
+import com.example.backend.online.OnlineBackend
 import com.example.data.*
+import com.example.ui.components.OnlineStatusBanner
+import com.example.ui.components.rememberDisplayEconomyState
+import kotlinx.coroutines.launch
 import com.example.monetization.PlayerEconomyRepository
 import com.example.ui.components.MythosButton
 import com.example.ui.components.MythosButtonStyle
@@ -43,13 +49,16 @@ fun EventScreen(
     onParticipateEvent: (MythosEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
+    val economyState by rememberDisplayEconomyState()
     val events = remember(economyState.activeEvents) {
         if (economyState.activeEvents.isNotEmpty()) economyState.activeEvents else EventCatalog.getDefaultEvents()
     }
     var currentMainTab by remember { mutableStateOf("EVENTS") } // "EVENTS" or "SHOP"
     var selectedFilter by remember { mutableStateOf("ALL") }
     var shopFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val isOnline = MythosBackend.isOnline
+    LaunchedEffect(Unit) { if (isOnline) MythosBackend.online.refreshAll() }
     val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
 
     val filteredEvents = remember(events, selectedFilter) {
@@ -129,6 +138,8 @@ fun EventScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                OnlineStatusBanner(onRetry = { coroutineScope.launch { MythosBackend.online.refreshAll() } })
+
                 // Main Switcher: Events vs Reward Shop
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -282,11 +293,29 @@ fun EventScreen(
 
                                     Button(
                                         onClick = {
-                                            val result = PlayerEconomyRepository.instance.purchaseEventShopItem(item.itemId)
-                                            shopFeedbackMessage = if (result.isSuccess) {
-                                                "Successfully claimed ${item.name}!"
+                                            if (isOnline) {
+                                                // The server holds the token wallet, checks the event window and the
+                                                // per-item purchase limit, and rejects duplicate claims.
+                                                val eventId = MythosBackend.online.snapshot.value.endgame?.activeEventIds?.firstOrNull()
+                                                if (eventId == null) {
+                                                    shopFeedbackMessage = "No event is currently active."
+                                                } else {
+                                                    coroutineScope.launch {
+                                                        MythosBackend.online.claimEventReward(eventId, item.itemId).fold(
+                                                            onSuccess = { shopFeedbackMessage = "Successfully claimed ${item.name}!" },
+                                                            onFailure = { e ->
+                                                                shopFeedbackMessage = (e as? BackendException)?.let(OnlineBackend::userMessage) ?: e.message
+                                                            }
+                                                        )
+                                                    }
+                                                }
                                             } else {
-                                                result.exceptionOrNull()?.message
+                                                val result = PlayerEconomyRepository.instance.purchaseEventShopItem(item.itemId)
+                                                shopFeedbackMessage = if (result.isSuccess) {
+                                                    "Successfully claimed ${item.name}!"
+                                                } else {
+                                                    result.exceptionOrNull()?.message
+                                                }
                                             }
                                         },
                                         enabled = canAfford && !isSoldOut,

@@ -562,7 +562,13 @@ fun BattleScreen(
                 rewards = uiState.rewards,
                 campaignVictoryResult = uiState.campaignVictoryResult,
                 arenaBattleResultSummary = uiState.arenaBattleResultSummary,
-                onBattleAgain = { viewModel.startNewBattle(encounterConfig = viewModel.activeEncounterConfig) },
+                onlineResultMessage = uiState.onlineResultMessage,
+                isSubmittingOnlineResult = uiState.isSubmittingOnlineResult,
+                onBattleAgain = {
+                    val config = viewModel.activeEncounterConfig
+                    // A server-issued session is single-use: go back to the screen that issues the next one.
+                    if (config?.onlineSessionId != null) onNavigateBack() else viewModel.startNewBattle(encounterConfig = config)
+                },
                 onGoHome = onNavigateBack,
                 onGoToCollection = onGoToCollection
             )

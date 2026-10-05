@@ -31,3 +31,6 @@ firebase-debug.log
 firebase-debug.*.log
 .build-outputs/
 debug.keystore.base64
+
+firestore-debug.log
+*-debug.log

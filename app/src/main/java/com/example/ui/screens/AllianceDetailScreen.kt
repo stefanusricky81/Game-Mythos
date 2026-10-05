@@ -29,6 +29,9 @@ import com.example.R
 import com.example.data.Alliance
 import com.example.data.AllianceEmblems
 import com.example.data.AllianceProgressionConfig
+import com.example.backend.online.AllianceGateway
+import com.example.ui.components.rememberDisplayEconomyState
+import kotlinx.coroutines.launch
 import com.example.monetization.PlayerEconomyRepository
 import com.example.ui.components.MythosButton
 import com.example.ui.components.MythosButtonStyle
@@ -45,7 +48,8 @@ fun AllianceDetailScreen(
     onAllianceLeft: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
+    val economyState by rememberDisplayEconomyState()
+    val coroutineScope = rememberCoroutineScope()
     val alliance = economyState.playerAlliance
     val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     var showLeaveDialog by remember { mutableStateOf(false) }
@@ -396,8 +400,9 @@ fun AllianceDetailScreen(
                     Button(
                         onClick = {
                             showLeaveDialog = false
-                            PlayerEconomyRepository.instance.leaveAlliance()
-                            onAllianceLeft()
+                            coroutineScope.launch {
+                                if (AllianceGateway.leave().isSuccess) onAllianceLeft()
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MythosTokens.Damage)
                     ) {

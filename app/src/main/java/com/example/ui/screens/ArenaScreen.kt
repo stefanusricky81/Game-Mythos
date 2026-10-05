@@ -17,6 +17,15 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.example.backend.MythosBackend
+import com.example.backend.online.BackendException
+import com.example.backend.online.OnlineArenaMatch
+import com.example.backend.online.OnlineBackend
+import com.example.backend.online.OnlineSnapshot
+import com.example.backend.online.toArenaOpponent
+import com.example.ui.components.OnlineStatusBanner
+import com.example.ui.components.rememberDisplayEconomyState
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,11 +61,24 @@ fun ArenaScreen(
 ) {
     BackHandler { onNavigateBack() }
 
-    val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
+    val economyState by rememberDisplayEconomyState()
     var selectedTab by remember { mutableStateOf(ArenaTab.OVERVIEW) }
     var isMatchmakingActive by remember { mutableStateOf(false) }
     var foundOpponent by remember { mutableStateOf<ArenaOpponent?>(null) }
     var showNoAttemptsDialog by remember { mutableStateOf(false) }
+    var deckRejectedMessage by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val isOnline = MythosBackend.isOnline
+    val onlineSnapshot by (if (isOnline) MythosBackend.online.snapshot.collectAsState() else remember { mutableStateOf(OnlineSnapshot()) })
+    var onlineMatch by remember { mutableStateOf<OnlineArenaMatch?>(null) }
+    var onlineErrorMessage by remember { mutableStateOf<String?>(null) }
+    val describeError: (Throwable) -> String = { e ->
+        (e as? BackendException)?.let(OnlineBackend::userMessage) ?: e.message ?: "Something went wrong."
+    }
+
+    // ONLINE_AUTHORITATIVE: deliver queued results, apply pending rewards and load server state.
+    LaunchedEffect(Unit) { if (isOnline) MythosBackend.online.refreshAll() }
+    LaunchedEffect(selectedTab) { if (isOnline && selectedTab == ArenaTab.LEADERBOARD) MythosBackend.online.refreshLeaderboard() }
     var seasonRewardClaimMessage by remember { mutableStateOf<String?>(null) }
 
     val currentRating = economyState.arenaRating
@@ -138,6 +160,11 @@ fun ArenaScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            OnlineStatusBanner(
+                onRetry = { coroutineScope.launch { MythosBackend.online.refreshAll() } },
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+
             // Navigation Tabs
             Row(
                 modifier = Modifier
@@ -191,9 +218,31 @@ fun ArenaScreen(
                         remainingDays = remainingDays,
                         numberFormat = numberFormat,
                         onFindMatch = {
-                            if (economyState.arenaDailyAttempts > 0) {
-                                isMatchmakingActive = true
-                                foundOpponent = ArenaCatalog.findOpponent(economyState.arenaRating)
+                            if (isOnline) {
+                                // The server picks the opponent, consumes the attempt and issues the match id.
+                                coroutineScope.launch {
+                                    MythosBackend.online.startArenaMatch(economyState.activeDeck).fold(
+                                        onSuccess = { match ->
+                                            onlineMatch = match
+                                            foundOpponent = match.opponent.toArenaOpponent()
+                                            isMatchmakingActive = true
+                                        },
+                                        onFailure = { e -> onlineErrorMessage = describeError(e) }
+                                    )
+                                }
+                            } else if (economyState.arenaDailyAttempts > 0) {
+                                coroutineScope.launch {
+                                    val deckCheck = MythosBackend.sync.validateDeckForPlay(
+                                        economyState.activeDeck,
+                                        economyState.ownedCardCounts
+                                    )
+                                    if (deckCheck.isSuccess) {
+                                        isMatchmakingActive = true
+                                        foundOpponent = ArenaCatalog.findOpponent(economyState.arenaRating)
+                                    } else {
+                                        deckRejectedMessage = deckCheck.message
+                                    }
+                                }
                             } else {
                                 showNoAttemptsDialog = true
                             }
@@ -206,7 +255,8 @@ fun ArenaScreen(
                         playerWins = economyState.arenaWins,
                         playerLosses = economyState.arenaLosses,
                         playerPeak = economyState.arenaPeakRating,
-                        numberFormat = numberFormat
+                        numberFormat = numberFormat,
+                        onlineEntries = if (isOnline) MythosBackend.online.leaderboardEntries(onlineSnapshot) else null
                     )
                 }
                 ArenaTab.HISTORY -> {
@@ -221,10 +271,30 @@ fun ArenaScreen(
                         currentTier = currentTier,
                         claimedSeasons = economyState.arenaSeasonRewardsClaimed,
                         numberFormat = numberFormat,
+                        claimEnabledOverride = if (isOnline) onlineSnapshot.claimableSeason != null else null,
+                        claimLabelOverride = if (isOnline) {
+                            onlineSnapshot.claimableSeason?.let { "CLAIM " + it.seasonId.removePrefix("season_") + " REWARD" } ?: "SEASON IN PROGRESS"
+                        } else null,
                         onClaimReward = { seasonId ->
-                            val reward = PlayerEconomyRepository.instance.claimSeasonReward(seasonId)
-                            if (reward != null) {
-                                seasonRewardClaimMessage = "Claimed Season ${currentSeason.seasonNumber} Rewards! +${numberFormat.format(reward.gold)} Gold, +${reward.cardShards} Shards"
+                            if (isOnline) {
+                                // The server only pays out finished seasons, once, based on the tier it recorded.
+                                val claimable = onlineSnapshot.claimableSeason
+                                if (claimable != null) {
+                                    coroutineScope.launch {
+                                        MythosBackend.online.claimSeasonReward(claimable.seasonId).fold(
+                                            onSuccess = { c ->
+                                                seasonRewardClaimMessage = "Claimed " + c.seasonId.replace('_', ' ') + " Rewards (" + c.tier + ")! +" +
+                                                    numberFormat.format(c.gold) + " Gold, +" + c.cardShards + " Shards"
+                                            },
+                                            onFailure = { e -> onlineErrorMessage = describeError(e) }
+                                        )
+                                    }
+                                }
+                            } else {
+                                val reward = PlayerEconomyRepository.instance.claimSeasonReward(seasonId)
+                                if (reward != null) {
+                                    seasonRewardClaimMessage = "Claimed Season ${currentSeason.seasonNumber} Rewards! +${numberFormat.format(reward.gold)} Gold, +${reward.cardShards} Shards"
+                                }
                             }
                         }
                     )
@@ -354,19 +424,27 @@ fun ArenaScreen(
                                 isMatchmakingActive = false
                                 foundOpponent = null
 
-                                // Consume attempt and launch battle (Requirement #7, #19)
-                                val consumed = PlayerEconomyRepository.instance.consumeArenaAttempt()
+                                // Offline: consume the local attempt. Online: the attempt was already consumed
+                                // by the server when the match was created; this only launches that match.
+                                val session = onlineMatch
+                                val consumed = if (isOnline) session != null else PlayerEconomyRepository.instance.consumeArenaAttempt()
                                 if (consumed) {
                                     val encounter = BattleEncounterConfig(
                                         encounterName = "Arena: ${opp.name}",
                                         enemyHero = HeroCatalog.findHero(opp.heroId)?.toBattleHero(level = 5) ?: Hero.createAres(),
-                                        rewards = BattleRewards(
-                                            gold = ArenaCatalog.Rewards.NORMAL_WIN_GOLD,
-                                            xp = ArenaCatalog.Rewards.NORMAL_WIN_XP
-                                        ),
+                                        rewards = if (isOnline) {
+                                            BattleRewards(gold = 0, xp = 0, cardRewardName = "Decided by the server")
+                                        } else {
+                                            BattleRewards(
+                                                gold = ArenaCatalog.Rewards.NORMAL_WIN_GOLD,
+                                                xp = ArenaCatalog.Rewards.NORMAL_WIN_XP
+                                            )
+                                        },
                                         isArenaMatch = true,
-                                        arenaOpponent = opp
+                                        arenaOpponent = opp,
+                                        onlineSessionId = if (isOnline) session?.matchId else null
                                     )
+                                    if (isOnline) onlineMatch = null
                                     onStartArenaBattle(encounter)
                                 }
                             },
@@ -396,6 +474,40 @@ fun ArenaScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showNoAttemptsDialog = false }) {
+                    Text("OK", color = MythosTokens.PrimaryGold)
+                }
+            },
+            containerColor = MythosTokens.PanelElevated
+        )
+    }
+
+    if (onlineErrorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { onlineErrorMessage = null },
+            title = { Text("Arena", color = MythosTokens.PrimaryGold) },
+            text = { Text(onlineErrorMessage!!, color = Color.White, modifier = Modifier.testTag("arena_online_error_message")) },
+            confirmButton = {
+                TextButton(onClick = { onlineErrorMessage = null }) {
+                    Text("OK", color = MythosTokens.PrimaryGold)
+                }
+            },
+            containerColor = MythosTokens.PanelElevated
+        )
+    }
+
+    if (deckRejectedMessage != null) {
+        AlertDialog(
+            onDismissRequest = { deckRejectedMessage = null },
+            title = { Text("Deck Not Valid For Arena", color = MythosTokens.PrimaryGold) },
+            text = {
+                Text(
+                    "${deckRejectedMessage!!}\n\nFix your Active Deck in the Deck Builder, then try again. No attempt was used.",
+                    color = Color.White,
+                    modifier = Modifier.testTag("arena_deck_rejected_message")
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { deckRejectedMessage = null }) {
                     Text("OK", color = MythosTokens.PrimaryGold)
                 }
             },
@@ -680,9 +792,11 @@ private fun ArenaLeaderboardContent(
     playerWins: Int,
     playerLosses: Int,
     playerPeak: Int,
-    numberFormat: NumberFormat
+    numberFormat: NumberFormat,
+    onlineEntries: List<ArenaLeaderboardEntry>? = null
 ) {
-    val entries = remember(playerRating, playerWins, playerLosses) {
+    // ONLINE_AUTHORITATIVE shows the server's leaderboard; offline keeps the simulated one.
+    val entries = onlineEntries ?: remember(playerRating, playerWins, playerLosses) {
         ArenaCatalog.getLeaderboard(
             playerRating = playerRating,
             playerWins = playerWins,
@@ -956,7 +1070,9 @@ private fun ArenaSeasonContent(
     currentTier: ArenaRankTier,
     claimedSeasons: Set<String>,
     numberFormat: NumberFormat,
-    onClaimReward: (String) -> Unit
+    onClaimReward: (String) -> Unit,
+    claimEnabledOverride: Boolean? = null,
+    claimLabelOverride: String? = null
 ) {
     val isClaimed = claimedSeasons.contains(season.seasonId)
 
@@ -1004,7 +1120,7 @@ private fun ArenaSeasonContent(
 
                         Button(
                             onClick = { onClaimReward(season.seasonId) },
-                            enabled = !isClaimed,
+                            enabled = claimEnabledOverride ?: !isClaimed,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MythosTokens.PrimaryGold,
                                 contentColor = Color.Black
@@ -1012,7 +1128,7 @@ private fun ArenaSeasonContent(
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.testTag("arena_claim_season_reward_button")
                         ) {
-                            Text(if (isClaimed) "CLAIMED" else "CLAIM REWARD", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(claimLabelOverride ?: if (isClaimed) "CLAIMED" else "CLAIM REWARD", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

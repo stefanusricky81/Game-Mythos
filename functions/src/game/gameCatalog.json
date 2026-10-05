@@ -1,0 +1,539 @@
+{
+  "version": 1,
+  "cards": ["c_olympian_guard", "c_titans_wrath", "c_spartan_phalanx", "c_nemean_hide", "c_heroic_rage", "c_divine_challenge", "c_hydra_blade", "c_nectar_gods", "c_zeus_thunderstone", "c_divine_aegis", "c_power_strike", "c_celestial_arrow", "c_athena_blessing", "c_cyclops_hammer", "c_ares_retribution", "c_ambrosia_draft", "c_shield_bash", "c_medusa_gaze", "c_cerberus_bite", "c_phoenix_rebirth", "c_zeus_thunderbolt", "c_zeus_storm_olympus", "c_zeus_divine_lightning", "c_athena_aegis", "c_athena_strategic_insight", "c_athena_spear_wisdom", "c_ares_blood_frenzy", "c_ares_war_cry", "c_ares_crimson_assault", "c_medusa_petrifying_gaze", "c_medusa_serpent_coil", "c_medusa_stone_curse", "c_hades_underworld_gate", "c_hades_soul_drain", "c_hades_helm_darkness", "c_thor_mjolnir", "c_thor_thunder_strike", "c_thor_stormbreaker", "c_loki_illusion", "c_loki_bargain", "c_loki_chaos_rift", "c_anubis_judgment", "c_anubis_soul_weighing", "c_anubis_tomb_curse", "c_spartan_war_horn", "c_valkyrie_wings", "c_runestone_odin", "c_eye_of_ra", "c_ankh_of_life", "c_river_styx_draught", "c_frost_giant_hammer", "c_gorgon_blood_vial"],
+  "heroes": ["hero_hercules", "hero_zeus", "hero_athena", "hero_ares", "hero_medusa", "hero_hades", "hero_thor", "hero_loki", "hero_anubis", "hero_achilles", "hero_merlin"],
+  "deck": {
+    "size": 20,
+    "maxCopies": 2
+  },
+  "starter": {
+    "heroId": "hero_hercules",
+    "deck": ["c_olympian_guard", "c_olympian_guard", "c_titans_wrath", "c_power_strike", "c_power_strike", "c_heroic_rage", "c_heroic_rage", "c_nectar_gods", "c_nectar_gods", "c_spartan_phalanx", "c_spartan_phalanx", "c_hydra_blade", "c_hydra_blade", "c_nemean_hide", "c_nemean_hide", "c_divine_challenge", "c_divine_challenge", "c_zeus_thunderstone", "c_celestial_arrow", "c_celestial_arrow"],
+    "ownedCardCounts": {
+      "c_ambrosia_draft": 2,
+      "c_ares_retribution": 1,
+      "c_athena_blessing": 1,
+      "c_celestial_arrow": 2,
+      "c_cerberus_bite": 1,
+      "c_cyclops_hammer": 1,
+      "c_divine_aegis": 1,
+      "c_divine_challenge": 2,
+      "c_heroic_rage": 2,
+      "c_hydra_blade": 2,
+      "c_medusa_gaze": 1,
+      "c_nectar_gods": 2,
+      "c_nemean_hide": 2,
+      "c_olympian_guard": 2,
+      "c_phoenix_rebirth": 1,
+      "c_power_strike": 2,
+      "c_shield_bash": 2,
+      "c_spartan_phalanx": 2,
+      "c_titans_wrath": 1,
+      "c_zeus_thunderstone": 1
+    }
+  },
+  "arena": {
+    "maxDailyAttempts": 5,
+    "seasonDays": 28,
+    "startingRating": 1000,
+    "minRating": 0,
+    "kFactor": 32,
+    "searchRange": 150,
+    "rewards": {
+      "firstWin": {
+        "gold": 1500,
+        "cardShards": 25,
+        "arenaPoints": 100,
+        "xp": 250
+      },
+      "normalWin": {
+        "gold": 750,
+        "cardShards": 10,
+        "arenaPoints": 50,
+        "xp": 150
+      },
+      "defeat": {
+        "gold": 250,
+        "cardShards": 5,
+        "arenaPoints": 20,
+        "xp": 75
+      },
+      "streak": {
+        "3": {
+          "gold": 200,
+          "arenaPoints": 10
+        },
+        "5": {
+          "gold": 500,
+          "arenaPoints": 25
+        },
+        "10": {
+          "gold": 1500,
+          "arenaPoints": 50
+        }
+      }
+    },
+    "tiers": [
+      {
+        "name": "BRONZE",
+        "min": 0,
+        "max": 999
+      },
+      {
+        "name": "SILVER",
+        "min": 1000,
+        "max": 1299
+      },
+      {
+        "name": "GOLD",
+        "min": 1300,
+        "max": 1599
+      },
+      {
+        "name": "PLATINUM",
+        "min": 1600,
+        "max": 1899
+      },
+      {
+        "name": "DIAMOND",
+        "min": 1900,
+        "max": 2199
+      },
+      {
+        "name": "MASTER",
+        "min": 2200,
+        "max": 2499
+      },
+      {
+        "name": "GRANDMASTER",
+        "min": 2500,
+        "max": 2799
+      },
+      {
+        "name": "MYTHIC",
+        "min": 2800,
+        "max": 2147483647
+      }
+    ],
+    "seasonRewards": {
+      "BRONZE": {
+        "gold": 5000,
+        "cardShards": 50,
+        "heroShards": 0,
+        "frameId": "frame_default_bronze",
+        "cosmeticId": null,
+        "title": null
+      },
+      "SILVER": {
+        "gold": 10000,
+        "cardShards": 100,
+        "heroShards": 0,
+        "frameId": "frame_silver_warrior",
+        "cosmeticId": null,
+        "title": null
+      },
+      "GOLD": {
+        "gold": 20000,
+        "cardShards": 150,
+        "heroShards": 25,
+        "frameId": "frame_gold_champion",
+        "cosmeticId": null,
+        "title": null
+      },
+      "PLATINUM": {
+        "gold": 35000,
+        "cardShards": 200,
+        "heroShards": 40,
+        "frameId": "frame_platinum_gladiator",
+        "cosmeticId": null,
+        "title": null
+      },
+      "DIAMOND": {
+        "gold": 50000,
+        "cardShards": 300,
+        "heroShards": 60,
+        "frameId": "frame_diamond_warlord",
+        "cosmeticId": null,
+        "title": null
+      },
+      "MASTER": {
+        "gold": 75000,
+        "cardShards": 400,
+        "heroShards": 100,
+        "frameId": "frame_master_conqueror",
+        "cosmeticId": null,
+        "title": null
+      },
+      "GRANDMASTER": {
+        "gold": 100000,
+        "cardShards": 500,
+        "heroShards": 150,
+        "frameId": "frame_grandmaster_mythic",
+        "cosmeticId": "cosmetic_gm_aura",
+        "title": null
+      },
+      "MYTHIC": {
+        "gold": 150000,
+        "cardShards": 1000,
+        "heroShards": 250,
+        "frameId": "frame_mythic_sovereign",
+        "cosmeticId": "cosmetic_mythic_wings",
+        "title": "Mythic Sovereign"
+      }
+    },
+    "opponents": [
+      {
+        "id": "pvp_opp_1",
+        "name": "Leonidas IX",
+        "heroId": "ares",
+        "heroName": "Ares",
+        "archetype": "SPARTAN_WARBORN",
+        "title": "Warmonger of Sparta",
+        "rating": 980,
+        "deck": ["c_spartan_phalanx", "c_spartan_phalanx", "c_ares_retribution", "c_ares_retribution", "c_hydra_blade", "c_hydra_blade", "c_power_strike", "c_power_strike", "c_heroic_rage", "c_heroic_rage", "c_cyclops_hammer", "c_cyclops_hammer", "c_divine_challenge", "c_divine_challenge", "c_titans_wrath", "c_nemean_hide", "c_nemean_hide", "c_olympian_guard", "c_olympian_guard", "c_nectar_gods"]
+      },
+      {
+        "id": "pvp_opp_2",
+        "name": "Thalassa Star",
+        "heroId": "hero_hercules",
+        "heroName": "Hercules",
+        "archetype": "OLYMPUS_VANGUARD",
+        "title": "Acolyte of Olympus",
+        "rating": 1010,
+        "deck": ["c_olympian_guard", "c_olympian_guard", "c_titans_wrath", "c_power_strike", "c_power_strike", "c_heroic_rage", "c_heroic_rage", "c_nectar_gods", "c_nectar_gods", "c_spartan_phalanx", "c_spartan_phalanx", "c_hydra_blade", "c_hydra_blade", "c_nemean_hide", "c_nemean_hide", "c_divine_challenge", "c_divine_challenge", "c_zeus_thunderstone", "c_divine_aegis", "c_ambrosia_draft"]
+      },
+      {
+        "id": "pvp_opp_3",
+        "name": "Sigurd Thunder",
+        "heroId": "thor",
+        "heroName": "Thor",
+        "archetype": "VALHALLA_STORM",
+        "title": "Hammer of Asgard",
+        "rating": 1045,
+        "deck": ["c_zeus_thunderstone", "c_power_strike", "c_power_strike", "c_cyclops_hammer", "c_cyclops_hammer", "c_celestial_arrow", "c_celestial_arrow", "c_heroic_rage", "c_heroic_rage", "c_spartan_phalanx", "c_spartan_phalanx", "c_hydra_blade", "c_hydra_blade", "c_titans_wrath", "c_nemean_hide", "c_nemean_hide", "c_nectar_gods", "c_nectar_gods", "c_ambrosia_draft", "c_ambrosia_draft"]
+      },
+      {
+        "id": "pvp_opp_4",
+        "name": "Osiris_Judge",
+        "heroId": "anubis",
+        "heroName": "Anubis",
+        "archetype": "EGYPTIAN_JUDGMENT",
+        "title": "Weigher of Hearts",
+        "rating": 1120,
+        "deck": ["c_divine_aegis", "c_athena_blessing", "c_celestial_arrow", "c_celestial_arrow", "c_shield_bash", "c_shield_bash", "c_olympian_guard", "c_olympian_guard", "c_power_strike", "c_power_strike", "c_divine_challenge", "c_divine_challenge", "c_nemean_hide", "c_nemean_hide", "c_ambrosia_draft", "c_ambrosia_draft", "c_nectar_gods", "c_nectar_gods", "c_heroic_rage", "c_titans_wrath"]
+      },
+      {
+        "id": "pvp_opp_5",
+        "name": "Aegis_Kallisto",
+        "heroId": "athena",
+        "heroName": "Athena",
+        "archetype": "CELESTIAL_GUARDIAN",
+        "title": "Strategist of Athens",
+        "rating": 1220,
+        "deck": ["c_divine_aegis", "c_athena_blessing", "c_shield_bash", "c_shield_bash", "c_olympian_guard", "c_olympian_guard", "c_nemean_hide", "c_nemean_hide", "c_spartan_phalanx", "c_spartan_phalanx", "c_nectar_gods", "c_nectar_gods", "c_ambrosia_draft", "c_ambrosia_draft", "c_divine_challenge", "c_divine_challenge", "c_power_strike", "c_power_strike", "c_phoenix_rebirth", "c_titans_wrath"]
+      },
+      {
+        "id": "pvp_opp_6",
+        "name": "Moros_Eclipse",
+        "heroId": "hades",
+        "heroName": "Hades",
+        "archetype": "UNDERWORLD_REAPER",
+        "title": "Reaper of Tartarus",
+        "rating": 1350,
+        "deck": ["c_cerberus_bite", "c_medusa_gaze", "c_phoenix_rebirth", "c_hydra_blade", "c_hydra_blade", "c_shield_bash", "c_shield_bash", "c_power_strike", "c_power_strike", "c_olympian_guard", "c_olympian_guard", "c_divine_challenge", "c_divine_challenge", "c_nemean_hide", "c_nemean_hide", "c_nectar_gods", "c_nectar_gods", "c_heroic_rage", "c_heroic_rage", "c_titans_wrath"]
+      },
+      {
+        "id": "pvp_opp_7",
+        "name": "Valkyrie_Freya",
+        "heroId": "thor",
+        "heroName": "Thor",
+        "archetype": "VALHALLA_STORM",
+        "title": "Shieldmaiden of Valhalla",
+        "rating": 1480,
+        "deck": ["c_zeus_thunderstone", "c_power_strike", "c_power_strike", "c_cyclops_hammer", "c_cyclops_hammer", "c_celestial_arrow", "c_celestial_arrow", "c_heroic_rage", "c_heroic_rage", "c_spartan_phalanx", "c_spartan_phalanx", "c_hydra_blade", "c_hydra_blade", "c_titans_wrath", "c_nemean_hide", "c_nemean_hide", "c_nectar_gods", "c_nectar_gods", "c_ambrosia_draft", "c_ambrosia_draft"]
+      },
+      {
+        "id": "pvp_opp_8",
+        "name": "Archon_Drakos",
+        "heroId": "ares",
+        "heroName": "Ares",
+        "archetype": "SPARTAN_WARBORN",
+        "title": "High Warlord",
+        "rating": 1650,
+        "deck": ["c_spartan_phalanx", "c_spartan_phalanx", "c_ares_retribution", "c_ares_retribution", "c_hydra_blade", "c_hydra_blade", "c_power_strike", "c_power_strike", "c_heroic_rage", "c_heroic_rage", "c_cyclops_hammer", "c_cyclops_hammer", "c_divine_challenge", "c_divine_challenge", "c_titans_wrath", "c_nemean_hide", "c_nemean_hide", "c_olympian_guard", "c_olympian_guard", "c_nectar_gods"]
+      },
+      {
+        "id": "pvp_opp_9",
+        "name": "Titan_Pallas",
+        "heroId": "athena",
+        "heroName": "Athena",
+        "archetype": "CELESTIAL_GUARDIAN",
+        "title": "Diamond Aegis",
+        "rating": 1950,
+        "deck": ["c_divine_aegis", "c_athena_blessing", "c_shield_bash", "c_shield_bash", "c_olympian_guard", "c_olympian_guard", "c_nemean_hide", "c_nemean_hide", "c_spartan_phalanx", "c_spartan_phalanx", "c_nectar_gods", "c_nectar_gods", "c_ambrosia_draft", "c_ambrosia_draft", "c_divine_challenge", "c_divine_challenge", "c_power_strike", "c_power_strike", "c_phoenix_rebirth", "c_titans_wrath"]
+      },
+      {
+        "id": "pvp_opp_10",
+        "name": "Grandmaster_Zephyr",
+        "heroId": "hero_hercules",
+        "heroName": "Hercules",
+        "archetype": "OLYMPUS_VANGUARD",
+        "title": "Master Gladiator",
+        "rating": 2250,
+        "deck": ["c_olympian_guard", "c_olympian_guard", "c_titans_wrath", "c_power_strike", "c_power_strike", "c_heroic_rage", "c_heroic_rage", "c_nectar_gods", "c_nectar_gods", "c_spartan_phalanx", "c_spartan_phalanx", "c_hydra_blade", "c_hydra_blade", "c_nemean_hide", "c_nemean_hide", "c_divine_challenge", "c_divine_challenge", "c_zeus_thunderstone", "c_divine_aegis", "c_ambrosia_draft"]
+      }
+    ]
+  },
+  "difficulties": [
+    {
+      "id": "normal",
+      "hpMultiplier": 1.0,
+      "rewardMultiplier": 1.0
+    },
+    {
+      "id": "hard",
+      "hpMultiplier": 1.350000023841858,
+      "rewardMultiplier": 1.5
+    },
+    {
+      "id": "nightmare",
+      "hpMultiplier": 1.75,
+      "rewardMultiplier": 2.0
+    },
+    {
+      "id": "mythic",
+      "hpMultiplier": 2.25,
+      "rewardMultiplier": 3.0
+    }
+  ],
+  "worldBosses": [
+    {
+      "bossId": "world_boss_kronos",
+      "maxHp": 1000000,
+      "start": "2026-09-20",
+      "end": "2026-10-15"
+    },
+    {
+      "bossId": "world_boss_jormungandr",
+      "maxHp": 1200000,
+      "start": "2026-10-01",
+      "end": "2026-10-30"
+    }
+  ],
+  "worldBossTiers": [
+    {
+      "id": "TOP_1_PERCENT",
+      "minDamage": 1000000,
+      "gold": 50000,
+      "eventTokens": 200,
+      "heroShards": 50,
+      "cardShards": 100
+    },
+    {
+      "id": "TOP_5_PERCENT",
+      "minDamage": 500000,
+      "gold": 30000,
+      "eventTokens": 120,
+      "heroShards": 30,
+      "cardShards": 60
+    },
+    {
+      "id": "TOP_10_PERCENT",
+      "minDamage": 200000,
+      "gold": 18000,
+      "eventTokens": 80,
+      "heroShards": 20,
+      "cardShards": 40
+    },
+    {
+      "id": "TOP_25_PERCENT",
+      "minDamage": 50000,
+      "gold": 10000,
+      "eventTokens": 50,
+      "heroShards": 10,
+      "cardShards": 20
+    },
+    {
+      "id": "PARTICIPATION",
+      "minDamage": 0,
+      "gold": 5000,
+      "eventTokens": 25,
+      "heroShards": 5,
+      "cardShards": 10
+    }
+  ],
+  "raids": [
+    {
+      "raidId": "raid_olympus",
+      "defaultDifficulty": "hard",
+      "stages": [
+        {
+          "stage": 1,
+          "hp": 18000,
+          "gold": 3000,
+          "eventTokens": 20,
+          "xp": 1500,
+          "boss": false
+        },
+        {
+          "stage": 2,
+          "hp": 22000,
+          "gold": 4000,
+          "eventTokens": 30,
+          "xp": 1500,
+          "boss": false
+        },
+        {
+          "stage": 3,
+          "hp": 28000,
+          "gold": 6000,
+          "eventTokens": 50,
+          "xp": 1500,
+          "boss": true
+        }
+      ]
+    },
+    {
+      "raidId": "raid_valhalla",
+      "defaultDifficulty": "nightmare",
+      "stages": [
+        {
+          "stage": 1,
+          "hp": 20000,
+          "gold": 3500,
+          "eventTokens": 25,
+          "xp": 1500,
+          "boss": false
+        },
+        {
+          "stage": 2,
+          "hp": 25000,
+          "gold": 4500,
+          "eventTokens": 35,
+          "xp": 1500,
+          "boss": false
+        },
+        {
+          "stage": 3,
+          "hp": 32000,
+          "gold": 7500,
+          "eventTokens": 65,
+          "xp": 1500,
+          "boss": true
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "eventId": "event_wrath_of_olympus",
+      "type": "RAID_BOSS",
+      "start": "2026-09-20",
+      "end": "2026-10-15",
+      "active": true
+    },
+    {
+      "eventId": "event_ragnarok",
+      "type": "OLYMPUS_TRIAL",
+      "start": "2026-09-25",
+      "end": "2026-10-20",
+      "active": true
+    },
+    {
+      "eventId": "event_judgment_of_anubis",
+      "type": "SEASON_EXPEDITION",
+      "start": "2026-10-01",
+      "end": "2026-10-25",
+      "active": true
+    },
+    {
+      "eventId": "event_typhon_raid",
+      "type": "RAID_BOSS",
+      "start": "2026-09-20",
+      "end": "2026-10-05",
+      "active": true
+    },
+    {
+      "eventId": "event_midas_bounty",
+      "type": "DOUBLE_GOLD",
+      "start": "2026-09-25",
+      "end": "2026-09-30",
+      "active": true
+    },
+    {
+      "eventId": "event_ares_trial",
+      "type": "OLYMPUS_TRIAL",
+      "start": "2026-10-01",
+      "end": "2026-10-14",
+      "active": false
+    }
+  ],
+  "eventShop": [
+    {
+      "itemId": "shop_hercules_shards",
+      "category": "HERO_SHARDS",
+      "tokenPrice": 50,
+      "limit": 5,
+      "gold": 0,
+      "heroShards": 10,
+      "heroId": "hero_hercules",
+      "cardShards": 0,
+      "cardId": "c_titans_wrath",
+      "cosmeticId": ""
+    },
+    {
+      "itemId": "shop_card_shards_pack",
+      "category": "CARD_SHARDS",
+      "tokenPrice": 40,
+      "limit": 5,
+      "gold": 0,
+      "heroShards": 0,
+      "heroId": "hero_hercules",
+      "cardShards": 25,
+      "cardId": "c_titans_wrath",
+      "cosmeticId": ""
+    },
+    {
+      "itemId": "shop_gold_bounty",
+      "category": "GOLD",
+      "tokenPrice": 30,
+      "limit": 10,
+      "gold": 10000,
+      "heroShards": 0,
+      "heroId": "hero_hercules",
+      "cardShards": 0,
+      "cardId": "c_titans_wrath",
+      "cosmeticId": ""
+    },
+    {
+      "itemId": "shop_exclusive_card",
+      "category": "EXCLUSIVE_CARD",
+      "tokenPrice": 150,
+      "limit": 1,
+      "gold": 0,
+      "heroShards": 0,
+      "heroId": "hero_hercules",
+      "cardShards": 0,
+      "cardId": "c_zeus_thunderstone",
+      "cosmeticId": ""
+    },
+    {
+      "itemId": "shop_aegis_frame",
+      "category": "COSMETIC",
+      "tokenPrice": 100,
+      "limit": 1,
+      "gold": 0,
+      "heroShards": 0,
+      "heroId": "hero_hercules",
+      "cardShards": 0,
+      "cardId": "c_titans_wrath",
+      "cosmeticId": "frame_aegis_champion"
+    }
+  ],
+  "alliance": {
+    "maxMembers": 20,
+    "maxLevel": 10,
+    "xpTable": [1000, 2500, 5000, 8000, 12000, 17000, 23000, 30000, 40000],
+    "emblems": ["emblem_gold_eagle", "emblem_lion_nemean", "emblem_thunderbolt", "emblem_olympus_shield", "emblem_spartan_helmet", "emblem_poseidon_trident"]
+  }
+}

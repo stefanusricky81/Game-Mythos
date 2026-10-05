@@ -28,6 +28,9 @@ import com.example.R
 import com.example.data.Alliance
 import com.example.data.AllianceMember
 import com.example.data.AllianceRole
+import com.example.backend.online.AllianceGateway
+import com.example.ui.components.rememberDisplayEconomyState
+import kotlinx.coroutines.launch
 import com.example.monetization.PlayerEconomyRepository
 import com.example.ui.theme.MythosTokens
 import com.example.ui.theme.MythosTypography
@@ -41,7 +44,8 @@ fun AllianceMembersScreen(
     onAllianceLeft: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
+    val economyState by rememberDisplayEconomyState()
+    val coroutineScope = rememberCoroutineScope()
     val alliance = economyState.playerAlliance
     val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
 
@@ -282,8 +286,10 @@ fun AllianceMembersScreen(
                                         if (member.role == AllianceRole.MEMBER) {
                                             Button(
                                                 onClick = {
-                                                    val res = PlayerEconomyRepository.instance.promoteMember(member.playerId)
-                                                    if (res.isFailure) actionErrorMessage = res.exceptionOrNull()?.message
+                                                    coroutineScope.launch {
+                                                        val res = AllianceGateway.promote(member.playerId)
+                                                        if (res.isFailure) actionErrorMessage = res.exceptionOrNull()?.message
+                                                    }
                                                 },
                                                 modifier = Modifier
                                                     .weight(1f)
@@ -298,8 +304,10 @@ fun AllianceMembersScreen(
                                         } else if (member.role == AllianceRole.OFFICER) {
                                             Button(
                                                 onClick = {
-                                                    val res = PlayerEconomyRepository.instance.demoteMember(member.playerId)
-                                                    if (res.isFailure) actionErrorMessage = res.exceptionOrNull()?.message
+                                                    coroutineScope.launch {
+                                                        val res = AllianceGateway.demote(member.playerId)
+                                                        if (res.isFailure) actionErrorMessage = res.exceptionOrNull()?.message
+                                                    }
                                                 },
                                                 modifier = Modifier
                                                     .weight(1f)
@@ -376,8 +384,10 @@ fun AllianceMembersScreen(
                     Button(
                         onClick = {
                             showTransferConfirmDialog = false
-                            val res = PlayerEconomyRepository.instance.transferLeadership(target.playerId)
-                            if (res.isFailure) actionErrorMessage = res.exceptionOrNull()?.message
+                            coroutineScope.launch {
+                                val res = AllianceGateway.transferLeadership(target.playerId)
+                                if (res.isFailure) actionErrorMessage = res.exceptionOrNull()?.message
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MythosTokens.PrimaryGold),
                         modifier = Modifier.testTag("confirm_transfer_leadership_button")
@@ -407,8 +417,10 @@ fun AllianceMembersScreen(
                     Button(
                         onClick = {
                             showKickConfirmDialog = false
-                            val res = PlayerEconomyRepository.instance.kickMember(target.playerId)
-                            if (res.isFailure) actionErrorMessage = res.exceptionOrNull()?.message
+                            coroutineScope.launch {
+                                val res = AllianceGateway.kick(target.playerId)
+                                if (res.isFailure) actionErrorMessage = res.exceptionOrNull()?.message
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MythosTokens.Damage),
                         modifier = Modifier.testTag("confirm_kick_member_button")

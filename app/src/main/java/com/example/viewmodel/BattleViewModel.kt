@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ai.AiAction
 import com.example.ai.EnemyAi
+import com.example.backend.online.OnlineBattleOutcome
+import com.example.backend.online.OnlineBattleReporter
 import com.example.audio.SoundManager
 import com.example.combat.DamageEngine
 import com.example.data.*
@@ -16,13 +18,16 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-class BattleViewModel : ViewModel() {
+class BattleViewModel(
+    private val onlineReporter: OnlineBattleReporter = OnlineBattleReporter()
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BattleUiState())
     val uiState: StateFlow<BattleUiState> = _uiState.asStateFlow()
 
     private var soundManager: SoundManager? = null
     private var hasAwardedVictoryRewards: Boolean = false
+    private var hasReportedOnlineResult: Boolean = false
 
     var activeEncounterConfig: BattleEncounterConfig? = null
         private set
@@ -44,6 +49,7 @@ class BattleViewModel : ViewModel() {
         encounterConfig: BattleEncounterConfig? = null
     ): Boolean {
         hasAwardedVictoryRewards = false
+        hasReportedOnlineResult = false
         activeEncounterConfig = encounterConfig
         val economy = PlayerEconomyRepository.instance.economyState.value
         val sourceDeck = customDeck ?: economy.activeDeck
@@ -161,6 +167,9 @@ class BattleViewModel : ViewModel() {
                         )
                     )
                 }
+            } else if (config?.onlineSessionId != null) {
+                // ONLINE_AUTHORITATIVE: the server decides rewards and progress; nothing is granted locally.
+                reportOnlineResult(config, victory = true)
             } else if (config?.isWorldBoss == true) {
                 val state = _uiState.value
                 val bossId = config.worldBossId ?: "world_boss_kronos"
@@ -227,6 +236,90 @@ class BattleViewModel : ViewModel() {
         }
         soundManager?.playVictorySound()
     }
+
+    /**
+     * ONLINE_AUTHORITATIVE result path. Reports the battle to the server exactly once; the server's
+     * answer (or an explicit offline/refusal message) is what the game-over dialog shows. Local quest /
+     * lifetime progress still advances, but gold, XP, rating and boss/raid progress are NOT granted here.
+     */
+    private fun reportOnlineResult(config: BattleEncounterConfig, victory: Boolean) {
+        if (hasReportedOnlineResult) return
+        hasReportedOnlineResult = true
+        val stats = _uiState.value.stats
+        PlayerEconomyRepository.instance.recordBattleFinished(isVictory = victory, stats = stats, isCampaign = false)
+        _uiState.update {
+            it.copy(
+                isSubmittingOnlineResult = true,
+                onlineResultMessage = null,
+                rewards = BattleRewards(gold = 0, xp = 0, cardRewardName = "Waiting for the server...", cardRewardRarity = CardRarity.COMMON)
+            )
+        }
+        viewModelScope.launch {
+            val outcome = onlineReporter.report(config, victory, stats)
+            _uiState.update { applyOnlineOutcome(it, config, outcome) }
+        }
+    }
+
+    private fun applyOnlineOutcome(state: BattleUiState, config: BattleEncounterConfig, outcome: OnlineBattleOutcome): BattleUiState =
+        when (outcome) {
+            is OnlineBattleOutcome.Arena -> {
+                val r = outcome.result
+                val tierBefore = runCatching { ArenaRankTier.valueOf(r.tierBefore) }.getOrDefault(ArenaRankTier.fromRating(r.ratingBefore))
+                val tierAfter = runCatching { ArenaRankTier.valueOf(r.tierAfter) }.getOrDefault(ArenaRankTier.fromRating(r.ratingAfter))
+                state.copy(
+                    isSubmittingOnlineResult = false,
+                    onlineResultMessage = null,
+                    arenaBattleResultSummary = ArenaBattleResultSummary(
+                        matchId = r.matchId,
+                        result = runCatching { ArenaMatchResult.valueOf(r.outcome) }.getOrDefault(ArenaMatchResult.DEFEAT),
+                        opponentName = config.arenaOpponent?.name ?: "Opponent",
+                        ratingBefore = r.ratingBefore,
+                        ratingAfter = r.ratingAfter,
+                        ratingChange = r.ratingDelta,
+                        newTier = tierAfter,
+                        isTierUpgraded = tierAfter.ordinal > tierBefore.ordinal,
+                        goldAwarded = r.rewards.gold,
+                        xpAwarded = r.rewards.xp,
+                        cardShardsAwarded = r.rewards.cardShards,
+                        arenaPointsAwarded = r.rewards.arenaPoints,
+                        isFirstWinOfDay = r.rewards.isFirstWin,
+                        currentStreak = r.rewards.streak,
+                        streakBonusGold = r.rewards.streakBonusGold,
+                        streakBonusPoints = r.rewards.streakBonusPoints
+                    ),
+                    rewards = BattleRewards(
+                        gold = r.rewards.gold,
+                        xp = r.rewards.xp,
+                        cardRewardName = "Card Shards (${r.rewards.cardShards}x)",
+                        cardRewardRarity = CardRarity.RARE
+                    )
+                )
+            }
+            is OnlineBattleOutcome.WorldBoss -> state.copy(
+                isSubmittingOnlineResult = false,
+                onlineResultMessage = if (outcome.result.bossDefeated) "The World Boss has fallen!" else "World Boss HP remaining: ${outcome.result.bossHpRemaining}",
+                rewards = BattleRewards(
+                    gold = outcome.result.gold,
+                    xp = outcome.result.xp,
+                    cardRewardName = "Event Tokens (+${outcome.result.eventTokens})",
+                    cardRewardRarity = CardRarity.RARE
+                )
+            )
+            is OnlineBattleOutcome.Raid -> state.copy(
+                isSubmittingOnlineResult = false,
+                onlineResultMessage = if (outcome.result.cleared) "Raid stage ${outcome.result.stage} cleared." else null,
+                rewards = BattleRewards(
+                    gold = outcome.result.gold,
+                    xp = outcome.result.xp,
+                    cardRewardName = "Event Tokens (+${outcome.result.eventTokens})",
+                    cardRewardRarity = CardRarity.RARE
+                )
+            )
+            is OnlineBattleOutcome.Failed -> state.copy(
+                isSubmittingOnlineResult = false,
+                onlineResultMessage = outcome.message
+            )
+        }
 
     fun inspectCard(card: Card?) {
         _uiState.update { it.copy(inspectedCard = card) }
@@ -1137,7 +1230,10 @@ class BattleViewModel : ViewModel() {
                 )
             }
             soundManager?.playDefeatSound()
-            if (activeEncounterConfig?.isArenaMatch == true) {
+            val onlineConfig = activeEncounterConfig?.takeIf { it.onlineSessionId != null }
+            if (onlineConfig != null) {
+                reportOnlineResult(onlineConfig, victory = false)
+            } else if (activeEncounterConfig?.isArenaMatch == true) {
                 val opponent = activeEncounterConfig?.arenaOpponent ?: ArenaCatalog.OPPONENT_POOL.first()
                 val arenaSummary = PlayerEconomyRepository.instance.recordArenaBattleFinished(
                     opponent = opponent,

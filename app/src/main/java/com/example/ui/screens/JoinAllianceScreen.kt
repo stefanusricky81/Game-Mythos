@@ -26,6 +26,10 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.Alliance
 import com.example.data.AllianceEmblems
+import com.example.backend.online.AllianceGateway
+import com.example.ui.components.rememberDisplayEconomyState
+import kotlinx.coroutines.launch
+import com.example.backend.MythosBackend
 import com.example.monetization.PlayerEconomyRepository
 import com.example.ui.theme.MythosTokens
 import com.example.ui.theme.MythosTypography
@@ -39,7 +43,9 @@ fun JoinAllianceScreen(
     onAllianceJoined: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
+    val economyState by rememberDisplayEconomyState()
+    val coroutineScope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { if (MythosBackend.isOnline) MythosBackend.online.refreshAlliance() }
     val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     var searchQuery by remember { mutableStateOf("") }
     var actionErrorMessage by remember { mutableStateOf<String?>(null) }
@@ -199,11 +205,13 @@ fun JoinAllianceScreen(
 
                                         Button(
                                             onClick = {
-                                                val result = PlayerEconomyRepository.instance.joinAlliance(alliance.allianceId)
-                                                if (result.isSuccess) {
-                                                    onAllianceJoined()
-                                                } else {
-                                                    actionErrorMessage = result.exceptionOrNull()?.message ?: "Failed to join alliance"
+                                                coroutineScope.launch {
+                                                    val result = AllianceGateway.join(alliance.allianceId)
+                                                    if (result.isSuccess) {
+                                                        onAllianceJoined()
+                                                    } else {
+                                                        actionErrorMessage = result.exceptionOrNull()?.message ?: "Failed to join alliance"
+                                                    }
                                                 }
                                             },
                                             enabled = !alliance.isFull,

@@ -31,6 +31,11 @@ import com.example.R
 import com.example.data.Alliance
 import com.example.data.AllianceEmblems
 import com.example.data.AllianceProgressionConfig
+import com.example.backend.online.AllianceGateway
+import com.example.ui.components.rememberDisplayEconomyState
+import kotlinx.coroutines.launch
+import com.example.backend.MythosBackend
+import com.example.ui.components.OnlineStatusBanner
 import com.example.monetization.PlayerEconomyRepository
 import com.example.ui.components.MythosButton
 import com.example.ui.components.MythosButtonStyle
@@ -49,7 +54,9 @@ fun AllianceScreen(
     onOpenAllianceMembers: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
+    val economyState by rememberDisplayEconomyState()
+    val coroutineScope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { if (MythosBackend.isOnline) MythosBackend.online.refreshAll() }
     val playerAlliance = economyState.playerAlliance
     val numberFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     var showLeaveConfirmDialog by remember { mutableStateOf(false) }
@@ -71,6 +78,7 @@ fun AllianceScreen(
 
         Scaffold(
             containerColor = Color.Transparent,
+            bottomBar = { OnlineStatusBanner(onRetry = { coroutineScope.launch { MythosBackend.online.refreshAll() } }) },
             topBar = {
                 TopAppBar(
                     title = {
@@ -119,9 +127,11 @@ fun AllianceScreen(
                     onOpenCreate = onOpenCreateAlliance,
                     onOpenJoin = onOpenJoinAlliance,
                     onQuickJoin = { allianceId ->
-                        val result = PlayerEconomyRepository.instance.joinAlliance(allianceId)
-                        if (result.isFailure) {
-                            actionErrorMessage = result.exceptionOrNull()?.message ?: "Failed to join alliance"
+                        coroutineScope.launch {
+                            val result = AllianceGateway.join(allianceId)
+                            if (result.isFailure) {
+                                actionErrorMessage = result.exceptionOrNull()?.message ?: "Failed to join alliance"
+                            }
                         }
                     },
                     modifier = Modifier
@@ -157,9 +167,11 @@ fun AllianceScreen(
                     Button(
                         onClick = {
                             showLeaveConfirmDialog = false
-                            val result = PlayerEconomyRepository.instance.leaveAlliance()
-                            if (result.isFailure) {
-                                actionErrorMessage = result.exceptionOrNull()?.message
+                            coroutineScope.launch {
+                                val result = AllianceGateway.leave()
+                                if (result.isFailure) {
+                                    actionErrorMessage = result.exceptionOrNull()?.message
+                                }
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MythosTokens.Damage),

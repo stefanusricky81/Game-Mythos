@@ -112,6 +112,21 @@ class GameSyncRepository(
     }
 
     /**
+     * App-facing deck gate: validates [deck] against the official catalog, the 20-card /
+     * max-2-copies rule, and the player's real owned quantities (PlayerEconomyState.ownedCardCounts).
+     * Runs the same [syncDeck] path, so failures are audit-logged and never overwrite the last
+     * valid [authoritativeDeck].
+     */
+    suspend fun validateDeckForPlay(deck: ActiveDeck, ownedCardCounts: Map<String, Int>): SyncOperationResult {
+        val inventory = ServerCardInventory(
+            ownedCardCounts
+                .filter { (cardId, quantity) -> cardId.isNotBlank() && quantity > 0 }
+                .mapValues { (cardId, quantity) -> ServerCardRecord(cardId = cardId, quantity = quantity) }
+        )
+        return syncDeck(deck, inventory)
+    }
+
+    /**
      * Synchronizes Arena state.
      */
     suspend fun syncArena(localArenaState: ServerArenaState): SyncOperationResult {

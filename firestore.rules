@@ -1,124 +1,90 @@
 rules_version = '2';
+
+// MYTHOS Firestore rules.
+//
+// Principle: the game client NEVER writes Firestore. Every authoritative document (economy-adjacent
+// profile, card ownership, arena state/matches, leaderboard, alliances, raid/boss state, event claims,
+// reward outbox, payment ledger) is written only by Cloud Functions through the Admin SDK, which
+// bypasses these rules. The client may read only what is needed to display its own state.
+//
+// There is deliberately no client-write rule anywhere: cosmetic profile edits, if ever added, must
+// also go through a function so they can be validated (names, length, profanity) before storage.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
-    function isAuthenticated() {
+    function signedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
     }
 
-    // Players collection
-    // Sensitive currencies and progression cannot be directly mutated by clients;
-    // mutations must occur through authoritative Cloud Functions.
-    match /players/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && request.resource.data.keys().hasAll(['uid', 'playerLevel', 'createdAt']);
-      allow update: if isOwner(userId) && 
-        // Direct mutation of authoritative balances is strictly prohibited
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          'gold', 'mythGems', 'cardShards', 'heroShards', 'arenaPoints', 'lifetimeBattles', 'lifetimeWins'
-        ]);
-      allow delete: if false;
-
-      // Cards subcollection (Server-authoritative ownership)
-      match /cards/{cardId} {
-        allow read: if isOwner(userId);
-        allow write: if false; // Only Cloud Functions can grant/consume cards
-      }
-
-      // Decks subcollection (Must be validated)
-      match /decks/{deckId} {
-        allow read: if isOwner(userId);
-        allow write: if isOwner(userId) && request.resource.data.cardIds.size() == 20;
-      }
-
-      // Arena State subcollection
-      match /arena/{document=**} {
-        allow read: if isOwner(userId);
-        allow write: if false; // Rating, streaks, and attempts are server-controlled
-      }
-
-      // Arena Match History
-      match /arenaMatches/{matchId} {
-        allow read: if isOwner(userId);
-        allow write: if false; // Match records are append-only by server
-      }
-
-      // Quests & Events progress
-      match /quests/{questId} {
-        allow read: if isOwner(userId);
-        allow write: if isOwner(userId);
-      }
-
-      match /events/{eventId} {
-        allow read: if isOwner(userId);
-        allow write: if false; // Event claims must pass server validation
-      }
-
-      match /alliance/{state} {
-        allow read: if isOwner(userId);
-        allow write: if false;
-      }
+    function isAllianceMember(allianceId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/alliances/$(allianceId)/members/$(request.auth.uid));
     }
 
-    // Alliances collection
-    match /alliances/{allianceId} {
-      allow read: if isAuthenticated();
-      allow write: if false; // All mutations routed through Cloud Functions
-
-      match /members/{memberId} {
-        allow read: if isAuthenticated();
-        allow write: if false;
-      }
+    // ---- Player-owned, server-written: profile, collection (card ownership), arena state / matches /
+    // seasons, endgame attempts, event purchases, alliance pointer, reward outbox.
+    match /players/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if false;
     }
-
-    // Competitive Seasons (Public read-only)
-    match /seasons/{seasonId} {
-      allow read: if isAuthenticated();
+    match /players/{uid}/{document=**} {
+      allow read: if isOwner(uid);
       allow write: if false;
     }
 
-    // Leaderboards (Public read-only, updated server-side)
-    match /leaderboards/{seasonId}/entries/{entryId} {
-      allow read: if isAuthenticated();
+    // ---- Public, read-only to signed-in players, server-written.
+    match /leaderboards/{seasonId}/entries/{uid} {
+      allow read: if signedIn();
       allow write: if false;
     }
 
-    // World Boss (Public read-only state, server-side damage application)
     match /worldBosses/{bossId} {
-      allow read: if isAuthenticated();
+      allow read: if signedIn();
       allow write: if false;
-
-      match /contributions/{contribId} {
-        allow read: if isAuthenticated();
-        allow write: if false;
-      }
     }
-
-    // Raids (Public read-only state)
-    match /raids/{raidId} {
-      allow read: if isAuthenticated();
-      allow write: if false;
-
-      match /contributions/{contribId} {
-        allow read: if isAuthenticated();
-        allow write: if false;
-      }
-    }
-
-    // Limited Events (Public read-only configuration)
-    match /events/{eventId} {
-      allow read: if isAuthenticated();
+    // A player's own boss contribution only.
+    match /worldBosses/{bossId}/contributions/{uid} {
+      allow read: if isOwner(uid);
       allow write: if false;
     }
 
-    // Payment Purchases collection: Server-side authority only via Firebase Admin SDK.
-    // Client SDK direct access is completely denied as an explicit backstop.
+    // Alliance headers are browsable (join screen). The member list is visible to members only.
+    match /alliances/{allianceId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /alliances/{allianceId}/members/{uid} {
+      allow read: if isAllianceMember(allianceId);
+      allow write: if false;
+    }
+
+    // ---- Server-only. Explicit denies document intent and survive a future wildcard being added.
+    // Payment ledger: written/read only by verifyPlayPurchase / getPlayerEntitlements (Admin SDK).
     match /purchases/{purchaseId} {
+      allow read, write: if false;
+    }
+    match /gameSessions/{sessionId} {
+      allow read, write: if false;
+    }
+    match /idempotency/{key} {
+      allow read, write: if false;
+    }
+    match /rateLimits/{key} {
+      allow read, write: if false;
+    }
+    match /allianceNames/{name} {
+      allow read, write: if false;
+    }
+    match /allianceRaids/{key} {
+      allow read, write: if false;
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
       allow read, write: if false;
     }
   }

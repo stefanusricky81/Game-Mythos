@@ -27,7 +27,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.backend.MythosBackend
+import com.example.backend.online.BackendException
+import com.example.backend.online.OnlineBackend
 import com.example.data.*
+import com.example.ui.components.OnlineStatusBanner
+import com.example.ui.components.rememberDisplayEconomyState
+import kotlinx.coroutines.launch
 import com.example.monetization.PlayerEconomyRepository
 import com.example.ui.components.MythosButton
 import com.example.ui.components.MythosButtonStyle
@@ -44,7 +50,7 @@ fun WorldBossScreen(
     onEnterBossBattle: (BattleEncounterConfig) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val economyState by PlayerEconomyRepository.instance.economyState.collectAsState()
+    val economyState by rememberDisplayEconomyState()
     val boss = remember(bossId) { EndgameCatalog.findWorldBoss(bossId) ?: EndgameCatalog.KRONOS }
     val currentHp = economyState.worldBossCurrentHp
     val hpRatio = (currentHp.toFloat() / boss.maxHp.toFloat()).coerceIn(0f, 1f)
@@ -57,6 +63,44 @@ fun WorldBossScreen(
     }
 
     var claimMessage by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val isOnline = MythosBackend.isOnline
+    val describeError: (Throwable) -> String = { e ->
+        (e as? BackendException)?.let(OnlineBackend::userMessage) ?: e.message ?: "Something went wrong."
+    }
+    LaunchedEffect(Unit) { if (isOnline) MythosBackend.online.refreshAll() }
+
+    // Offline: the boss fights the locally tracked HP and pays the encounter rewards locally. Online: the
+    // server issued the attempt (enemy HP included) and decides every reward, so the encounter pays nothing.
+    val buildEncounter: (Int, String?) -> BattleEncounterConfig = { enemyHp, sessionId ->
+        val enemyHero = Hero(
+            id = boss.bossId,
+            name = boss.name,
+            title = boss.title,
+            currentHp = enemyHp,
+            maxHp = enemyHp,
+            baseAttack = (boss.baseAttack * currentPhase.attackMultiplier).toInt(),
+            baseDefense = (boss.baseDefense * currentPhase.defenseMultiplier).toInt(),
+            portraitResId = boss.portraitResId
+        )
+        BattleEncounterConfig(
+            stageId = boss.bossId,
+            stageNumber = 999,
+            encounterName = "${boss.name} [World Boss]",
+            enemyHero = enemyHero,
+            rewards = if (sessionId != null) {
+                BattleRewards(gold = 0, xp = 0, cardRewardName = "Decided by the server", cardRewardRarity = CardRarity.RARE)
+            } else {
+                BattleRewards(gold = 5_000, xp = 3_000, cardRewardName = "Titan Slayer Crate", cardRewardRarity = CardRarity.LEGENDARY)
+            },
+            rewardCardId = "c_titans_wrath",
+            isBoss = true,
+            isWorldBoss = true,
+            worldBossId = boss.bossId,
+            maxTurnsForStarCondition = 10,
+            onlineSessionId = sessionId
+        )
+    }
     val alliance = economyState.playerAlliance
     val allianceMembersCount = alliance?.members?.size ?: 18
     val allianceName = alliance?.name ?: "Olympus Guardians"
@@ -133,6 +177,8 @@ fun WorldBossScreen(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                OnlineStatusBanner(onRetry = { coroutineScope.launch { MythosBackend.online.refreshAll() } })
+
                 // Boss Hero Header Presentation
                 Card(
                     modifier = Modifier
@@ -247,34 +293,16 @@ fun WorldBossScreen(
                             text = "ENTER BATTLE",
                             subtitle = "Deal Damage • Earn Contribution & Tokens",
                             onClick = {
-                                val enemyHero = Hero(
-                                    id = boss.bossId,
-                                    name = boss.name,
-                                    title = boss.title,
-                                    currentHp = currentHp.coerceAtMost(35_000L).toInt(),
-                                    maxHp = currentHp.coerceAtMost(35_000L).toInt(),
-                                    baseAttack = (boss.baseAttack * currentPhase.attackMultiplier).toInt(),
-                                    baseDefense = (boss.baseDefense * currentPhase.defenseMultiplier).toInt(),
-                                    portraitResId = boss.portraitResId
-                                )
-                                val encounter = BattleEncounterConfig(
-                                    stageId = boss.bossId,
-                                    stageNumber = 999,
-                                    encounterName = "${boss.name} [World Boss]",
-                                    enemyHero = enemyHero,
-                                    rewards = BattleRewards(
-                                        gold = 5_000,
-                                        xp = 3_000,
-                                        cardRewardName = "Titan Slayer Crate",
-                                        cardRewardRarity = CardRarity.LEGENDARY
-                                    ),
-                                    rewardCardId = "c_titans_wrath",
-                                    isBoss = true,
-                                    isWorldBoss = true,
-                                    worldBossId = boss.bossId,
-                                    maxTurnsForStarCondition = 10
-                                )
-                                onEnterBossBattle(encounter)
+                                if (isOnline) {
+                                    coroutineScope.launch {
+                                        MythosBackend.online.startWorldBoss(boss.bossId).fold(
+                                            onSuccess = { session -> onEnterBossBattle(buildEncounter(session.enemyHp, session.sessionId)) },
+                                            onFailure = { e -> claimMessage = describeError(e) }
+                                        )
+                                    }
+                                } else {
+                                    onEnterBossBattle(buildEncounter(currentHp.coerceAtMost(35_000L).toInt(), null))
+                                }
                             },
                             style = MythosButtonStyle.PRIMARY,
                             icon = Icons.Default.Whatshot,
@@ -342,11 +370,20 @@ fun WorldBossScreen(
                         } else if (contrib.participationCount > 0) {
                             Button(
                                 onClick = {
-                                    val result = PlayerEconomyRepository.instance.claimWorldBossReward(boss.bossId)
-                                    claimMessage = if (result.isSuccess) {
-                                        "Claimed ${result.getOrNull()?.displayName}!"
+                                    if (isOnline) {
+                                        coroutineScope.launch {
+                                            MythosBackend.online.claimWorldBossReward(boss.bossId).fold(
+                                                onSuccess = { claim -> claimMessage = "Claimed ${claim.tier ?: "rewards"}!" },
+                                                onFailure = { e -> claimMessage = describeError(e) }
+                                            )
+                                        }
                                     } else {
-                                        result.exceptionOrNull()?.message
+                                        val result = PlayerEconomyRepository.instance.claimWorldBossReward(boss.bossId)
+                                        claimMessage = if (result.isSuccess) {
+                                            "Claimed ${result.getOrNull()?.displayName}!"
+                                        } else {
+                                            result.exceptionOrNull()?.message
+                                        }
                                     }
                                 },
                                 modifier = Modifier
