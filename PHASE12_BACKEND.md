@@ -79,22 +79,122 @@ write rule at all**.
 
 `purchases` is the payment ledger and stays deny-all.
 
-## Production checklist
+## Deployment
 
-1. Upgrade the Firebase project to **Blaze** and deploy: `firebase deploy --only functions,firestore:rules`.
-   (Deploying replaces the old `firestore.rules`; the new rules are stricter for every path except the public reads above.)
-2. **App Check.** The app registers Play Integrity (release) / Debug (debug) in `FirebaseCallableTransport`. Register the
-   app in Firebase → App Check, add debug tokens for development devices, then set
-   `ENFORCE_APP_CHECK=true` in `functions/.env.<project-id>` and redeploy. It is off by default so an unregistered
-   app is not locked out.
-3. Decide `ALLOW_COLLECTION_ATTESTATION` (see gap 2).
-4. Enable Firestore **TTL** on `idempotency.expiresAt` and `rateLimits.expiresAt`. Consider a retention policy for `gameSessions`.
-5. No composite indexes are required (every query is single-field).
-6. Add alerting on function error rate and `resource-exhausted` spikes.
-7. Flip `BackendConfig.MODE` to `ONLINE_AUTHORITATIVE`, build, and test against the real project with a license-tester
-   account before any public release.
-8. Keep `functions/src/game/gameCatalog.json` in sync: `UPDATE_GAME_CATALOG=1 ./gradlew test --tests "*GameCatalogParityTest*"`
-   regenerates it from the Kotlin catalogs, and the same test fails the build if it drifts.
+Project: `mythos-game-a8b8c` (project number 45065573868, from `.firebaserc` and `app/google-services.json`).
+Region: `asia-southeast1` for every function. The Firebase CLI account that can see this project is the Mythos
+owner account; pass it explicitly (`--account <owner>`) instead of switching the machine-wide login.
+
+**Status (dry run, 2026-10-05): Firestore rules compile successfully against the project, but Cloud Functions
+cannot be prepared because the project has no open billing account (Blaze plan required — Cloud Build and
+Artifact Registry cannot be enabled). Nothing has been deployed.**
+
+### Prerequisites (all still open)
+
+1. **Upgrade `mythos-game-a8b8c` to the Blaze plan** (billing account must be open).
+2. **Runtime service account.** The Phase 12 functions use the default compute service account. It must be able to use
+   Firestore (`roles/datastore.user`); new projects do not always grant this. Do NOT reuse the payment service
+   account `mythos-play-verifier` for gameplay (it is deliberately limited to payment verification and has Play
+   financial-data access). Either grant the default account `roles/datastore.user`, or create a dedicated
+   `mythos-game-backend` service account and add `serviceAccount:` to `onCall(...)` in
+   `functions/src/game/callables.ts`.
+3. Decide `ALLOW_COLLECTION_ATTESTATION` (gap 2 above).
+
+### Deploy ONLY the Phase 12 functions (never `--only functions`)
+
+`functions/src/index.ts` exports the payment functions and the Phase 12 functions from the same codebase, so a plain
+`--only functions` would also deploy the payment functions. Name the Phase 12 functions explicitly. No `--force`
+(it deletes functions missing from the source):
+
+```
+firebase deploy --project mythos-game-a8b8c --account <owner-account> --non-interactive --only \
+functions:ensurePlayerProfile,functions:validateDeck,functions:syncCollection,functions:startArenaMatch,\
+functions:submitArenaResult,functions:claimArenaReward,functions:getArenaState,functions:getLeaderboard,\
+functions:allianceAction,functions:syncAlliance,functions:startEndgameAttempt,functions:submitRaidContribution,\
+functions:submitWorldBossContribution,functions:claimWorldBossReward,functions:claimEventReward,\
+functions:getEndgameState,functions:getPendingRewards,functions:ackRewards,firestore:rules
+```
+
+Add `--dry-run` first. Indexes: none are required (every query is single-field), so there is nothing to deploy for
+`firestore:indexes`.
+
+### App Check (off by default — do not enforce yet)
+
+Server: `ENFORCE_APP_CHECK=true` in `functions/.env.mythos-game-a8b8c`, then redeploy the Phase 12 functions. Absent
+or any other value = not enforced. (The payment functions hard-code `enforceAppCheck: true` independently and are
+not affected by this flag.)
+
+Client: `FirebaseCallableTransport` installs Play Integrity (release) / Debug (debug) before the first call.
+
+Before enforcing, all of these must be true:
+
+- Play Integrity API enabled for the Cloud project and linked in Play Console.
+- The Android app registered under Firebase → App Check with the **Play Integrity** provider using the *app signing*
+  key SHA-256 (`SETUP_PLAY_BILLING.md` records this as done; it cannot be verified from the CLI).
+- Debug tokens registered for every sideloaded debug build used for testing (the Debug provider is not trusted
+  otherwise).
+- A **release build installed from Play (internal testing)** has been exercised in ONLINE mode with App Check metrics
+  showing a verified-request ratio near 100%.
+
+Without enforcement the callables are reachable by anyone who can obtain an anonymous Firebase token; the per-uid
+rate limits bound a single account but not account creation. Enforce before public release.
+
+## Backend mode stays LOCAL until deployed and tested
+
+`BackendConfig.MODE` stays `LOCAL_DEVELOPMENT`. To run an E2E build on a device, flip it locally (do not commit),
+copy `app/google-services.json` (git-ignored) into the module, and build a debug APK.
+
+## E2E
+
+### Automated (emulators, no production touched)
+
+```
+cd e2e && npm install && npm test
+```
+Real Firebase client SDK against the Auth + Functions + Firestore emulators (`firebase.emulators.json` is a
+dedicated config; `firebase.json` is untouched). Covers: unauthenticated rejection, anonymous-auth uid derived from
+the auth context, payload-uid spoof rejection, unknown/forged field rejection (reward, rating), fabricated and
+foreign match ids, request-id idempotency, the minimum-battle-time gate, server rating/reward, result replay (a
+replay cannot flip an outcome), leaderboard, reward outbox pending/ack, raid unlock + alliance contribution, World
+Boss damage cap and claim gating, event shop (wallet, unknown item, duplicate request), and alliance
+create/join/promote/demote/transfer/leave.
+
+### Manual, after deployment (device build, ONLINE mode, license-tester account)
+
+Identity
+- [ ] First launch signs in anonymously; the Firestore `players/{uid}` document key equals the Firebase Auth uid.
+- [ ] Kill and relaunch the app: same uid, same profile.
+- [ ] A call with a hand-edited payload `uid` is refused (`permission-denied`).
+
+Arena
+- [ ] Find Match: attempts drop 5 → 4 on the server, a `gameSessions/arena_*` document exists, opponent comes from the server.
+- [ ] Cancel and Find Match again: the same match resumes, attempts stay 4.
+- [ ] Win: rating/rewards on the result screen equal what the server returned; gold/XP arrive once (outbox PENDING → APPLIED).
+- [ ] Airplane mode at game over: the "offline" message appears, nothing is granted; reconnect, relaunch: result delivered once, reward applied once.
+- [ ] Leaderboard shows the player at the server-computed rank.
+
+Alliance
+- [ ] Create, join (second device), promote, demote, kick, transfer leadership, leave; the 21st join is refused.
+
+Endgame
+- [ ] World Boss: attempt count, shared HP drops, claim refused until the boss is defeated/ended, claim once.
+- [ ] Raid: needs an alliance, stage 2 locked until stage 1 clears, 3 attempts/day.
+- [ ] Event shop: server token wallet, purchase limit, duplicate tap does not double-spend.
+
+Security (script against the deployed project with a real anonymous token)
+- [ ] No token → `unauthenticated`; extra field (`gold`, `opponentRating`, `reward`) → `invalid-argument`.
+- [ ] Re-sending a `requestId` returns the original result, not a second grant.
+- [ ] Client SDK write to `players/{uid}`, `purchases`, `gameSessions`, `idempotency`, `rateLimits` is refused.
+
+Payment (read-only check)
+- [ ] `sha256sum -c` of the payment file list is unchanged and `PaymentSecurityTest` / `MonetizationUnitTest` pass.
+
+## Other production items
+
+- Enable Firestore **TTL** on `idempotency.expiresAt` and `rateLimits.expiresAt`; consider a retention policy for `gameSessions`.
+- Alerting on function error rate and `resource-exhausted` spikes.
+- Keep `functions/src/game/gameCatalog.json` in sync: `UPDATE_GAME_CATALOG=1 ./gradlew test --tests "*GameCatalogParityTest*"`
+  regenerates it from the Kotlin catalogs, and the same test fails the build if it drifts.
 
 ## Tests
 
@@ -103,4 +203,7 @@ write rule at all**.
 cd functions && npm test             # server logic + API contract (in-memory Firestore double)
 cd functions && npm run build
 cd rules-tests && npm install && npm test   # Firestore rules against the emulator (needs JDK 21+)
+cd e2e && npm install && npm test           # client SDK -> Auth/Functions/Firestore emulators (needs JDK 21+)
+# production Firestore adapter against the emulator:
+firebase emulators:exec --only firestore --project demo-mythos "cd functions && npx jest src/game/firestoreAdapter"
 ```

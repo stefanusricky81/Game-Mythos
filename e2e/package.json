@@ -1,0 +1,11 @@
+{
+  "name": "mythos-e2e",
+  "private": true,
+  "description": "Phase 12 end-to-end tests: real Firebase client SDK -> Auth/Functions/Firestore emulators. Separate from functions/ and rules-tests/ on purpose.",
+  "scripts": {
+    "test": "cd .. && firebase emulators:exec --config firebase.emulators.json --only auth,functions,firestore --project demo-mythos \"node --test e2e/phase12.e2e.test.mjs\""
+  },
+  "devDependencies": {
+    "firebase": "^11.0.2"
+  }
+}
